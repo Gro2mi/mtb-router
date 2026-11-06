@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="OSM API fixture for e2e tests">
+  <node id="101" lat="47.0" lon="8.0"/>
+  <node id="102" lat="47.0" lon="8.0005"/>
+  <node id="103" lat="47.0" lon="8.001"/>
+  <node id="104" lat="47.0" lon="8.0015"/>
+  <node id="105" lat="47.0" lon="8.002"/>
+  <node id="106" lat="47.0" lon="8.0025"/>
+  <node id="107" lat="47.0" lon="8.003"/>
+  <node id="108" lat="47.0" lon="8.0035"/>
+  <node id="109" lat="47.0" lon="8.004"/>
+
+  <node id="201" lat="47.001" lon="8.0"/>
+  <node id="202" lat="47.001" lon="8.0005"/>
+  <node id="203" lat="47.001" lon="8.001"/>
+  <node id="204" lat="47.001" lon="8.0015"/>
+  <node id="205" lat="47.001" lon="8.002"/>
+  <node id="206" lat="47.001" lon="8.0025"/>
+  <node id="207" lat="47.001" lon="8.003"/>
+  <node id="208" lat="47.001" lon="8.0035"/>
+  <node id="209" lat="47.001" lon="8.004"/>
+
+  <node id="301" lat="46.999" lon="8.0"/>
+  <node id="302" lat="46.999" lon="8.001"/>
+  <node id="303" lat="46.999" lon="8.002"/>
+  <node id="304" lat="46.999" lon="8.003"/>
+  <node id="305" lat="46.999" lon="8.004"/>
+
+  <node id="401" lat="47.002" lon="8.0"/>
+  <node id="402" lat="47.002" lon="8.001"/>
+  <node id="403" lat="47.002" lon="8.002"/>
+  <node id="404" lat="47.002" lon="8.003"/>
+  <node id="405" lat="47.002" lon="8.004"/>
+
+  <node id="501" lat="47.0015" lon="8.0035"/>
+
+  <way id="1001">
+    <nd ref="101"/><nd ref="102"/><nd ref="103"/><nd ref="104"/><nd ref="105"/>
+    <nd ref="106"/><nd ref="107"/><nd ref="108"/><nd ref="109"/>
+    <tag k="highway" v="track"/>
+    <tag k="surface" v="compacted"/>
+    <tag k="tracktype" v="grade2"/>
+  </way>
+  <way id="1002">
+    <nd ref="201"/><nd ref="202"/><nd ref="203"/><nd ref="204"/><nd ref="205"/>
+    <nd ref="206"/><nd ref="207"/><nd ref="208"/><nd ref="209"/>
+    <tag k="highway" v="path"/>
+    <tag k="mtb:scale" v="2"/>
+    <tag k="sac_scale" v="mountain_hiking"/>
+  </way>
+  <way id="1003">
+    <nd ref="301"/><nd ref="302"/><nd ref="303"/><nd ref="304"/><nd ref="305"/>
+    <tag k="highway" v="footway"/>
+    <tag k="bicycle" v="no"/>
+  </way>
+  <way id="1004">
+    <nd ref="401"/><nd ref="402"/><nd ref="403"/><nd ref="404"/><nd ref="405"/>
+    <tag k="highway" v="residential"/>
+  </way>
+  <way id="1005">
+    <nd ref="108"/><nd ref="208"/><nd ref="501"/><nd ref="405"/>
+    <tag k="highway" v="track"/>
+    <tag k="surface" v="compacted"/>
+  </way>
+</osm>

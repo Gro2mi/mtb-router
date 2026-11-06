@@ -1,0 +1,70 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API fixture for e2e tests",
+  "elements": [
+    { "type": "node", "id": 101, "lat": 47.0, "lon": 8.0 },
+    { "type": "node", "id": 102, "lat": 47.0, "lon": 8.0005 },
+    { "type": "node", "id": 103, "lat": 47.0, "lon": 8.001 },
+    { "type": "node", "id": 104, "lat": 47.0, "lon": 8.0015 },
+    { "type": "node", "id": 105, "lat": 47.0, "lon": 8.002 },
+    { "type": "node", "id": 106, "lat": 47.0, "lon": 8.0025 },
+    { "type": "node", "id": 107, "lat": 47.0, "lon": 8.003 },
+    { "type": "node", "id": 108, "lat": 47.0, "lon": 8.0035 },
+    { "type": "node", "id": 109, "lat": 47.0, "lon": 8.004 },
+
+    { "type": "node", "id": 201, "lat": 47.001, "lon": 8.0 },
+    { "type": "node", "id": 202, "lat": 47.001, "lon": 8.0005 },
+    { "type": "node", "id": 203, "lat": 47.001, "lon": 8.001 },
+    { "type": "node", "id": 204, "lat": 47.001, "lon": 8.0015 },
+    { "type": "node", "id": 205, "lat": 47.001, "lon": 8.002 },
+    { "type": "node", "id": 206, "lat": 47.001, "lon": 8.0025 },
+    { "type": "node", "id": 207, "lat": 47.001, "lon": 8.003 },
+    { "type": "node", "id": 208, "lat": 47.001, "lon": 8.0035 },
+    { "type": "node", "id": 209, "lat": 47.001, "lon": 8.004 },
+
+    { "type": "node", "id": 301, "lat": 46.999, "lon": 8.0 },
+    { "type": "node", "id": 302, "lat": 46.999, "lon": 8.001 },
+    { "type": "node", "id": 303, "lat": 46.999, "lon": 8.002 },
+    { "type": "node", "id": 304, "lat": 46.999, "lon": 8.003 },
+    { "type": "node", "id": 305, "lat": 46.999, "lon": 8.004 },
+
+    { "type": "node", "id": 401, "lat": 47.002, "lon": 8.0 },
+    { "type": "node", "id": 402, "lat": 47.002, "lon": 8.001 },
+    { "type": "node", "id": 403, "lat": 47.002, "lon": 8.002 },
+    { "type": "node", "id": 404, "lat": 47.002, "lon": 8.003 },
+    { "type": "node", "id": 405, "lat": 47.002, "lon": 8.004 },
+
+    { "type": "node", "id": 501, "lat": 47.0015, "lon": 8.0035 },
+
+    {
+      "type": "way",
+      "id": 1001,
+      "nodes": [101, 102, 103, 104, 105, 106, 107, 108, 109],
+      "tags": { "highway": "track", "surface": "compacted", "tracktype": "grade2" }
+    },
+    {
+      "type": "way",
+      "id": 1002,
+      "nodes": [201, 202, 203, 204, 205, 206, 207, 208, 209],
+      "tags": { "highway": "path", "mtb:scale": "2", "sac_scale": "mountain_hiking" }
+    },
+    {
+      "type": "way",
+      "id": 1003,
+      "nodes": [301, 302, 303, 304, 305],
+      "tags": { "highway": "footway", "bicycle": "no" }
+    },
+    {
+      "type": "way",
+      "id": 1004,
+      "nodes": [401, 402, 403, 404, 405],
+      "tags": { "highway": "residential" }
+    },
+    {
+      "type": "way",
+      "id": 1005,
+      "nodes": [108, 208, 501, 405],
+      "tags": { "highway": "track", "surface": "compacted" }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+src/paraglide
+public/vendor
+test-results
+playwright-report
+coverage
+.inlang
+package-lock.json
+pnpm-lock.yaml

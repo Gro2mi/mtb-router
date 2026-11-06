@@ -1,0 +1,222 @@
+/**
+ * Self-hosted static tile provider: serves prebuilt corridor data (routable
+ * OSM ways + nodes) from plain static hosting — e.g. IONOS webspace — built
+ * with scripts/build-tiles. Tried before Overpass in the corridor chain
+ * (PLAN §3 "prebuilt graph tiles"); missing tiles (region not built) fall
+ * through to the Overpass → OSM API chain. The same tile format feeds the E3
+ * graph builder.
+ */
+import { parseWayTags, isRoutable } from './tags';
+import type { WaysBundle } from './overpass';
+
+const TILE_BASE_KEY = 'mtbr.tileBaseUrl.v1';
+export const TILE_FORMAT_VERSION = 2;
+/** Tile edge in degrees (~11 km × 7.4 km at 47° lat). Must match the builder. */
+export const TILE_DEG = 0.1;
+/** Request budget per corridor (very long routes degrade to Overpass). */
+const MAX_TILES = 64;
+const CONCURRENCY = 6;
+
+/**
+ * Worker contexts have no localStorage — the host injects the configured URL
+ * over the engine protocol. `undefined` = follow localStorage (main thread).
+ */
+let baseUrlOverride: string | null | undefined = undefined;
+
+export function setTileBaseUrlOverride(value: string | null | undefined): void {
+  baseUrlOverride = value;
+}
+
+export function getTileBaseUrl(): string | null {
+  if (baseUrlOverride !== undefined) return baseUrlOverride;
+  try {
+    const url = localStorage.getItem(TILE_BASE_KEY);
+    if (!url) return null;
+    const normalized = url.trim().replace(/\/+$/, '');
+    return normalized.startsWith('http') ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setTileBaseUrl(url: string): void {
+  try {
+    const normalized = url.trim().replace(/\/+$/, '');
+    if (normalized === '') localStorage.removeItem(TILE_BASE_KEY);
+    else localStorage.setItem(TILE_BASE_KEY, normalized);
+  } catch {
+    // private mode — setting won't persist
+  }
+}
+
+export interface TileRange {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Tiles covering the padded polyline bbox (pure); null when over budget. */
+export function corridorTileRange(
+  points: [number, number][],
+  radiusDeg: number,
+  tileDeg = TILE_DEG,
+): TileRange | null {
+  if (points.length === 0) return null;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of points) {
+    minLng = Math.min(minLng, lng);
+    maxLng = Math.max(maxLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+  }
+  const x0 = Math.floor((minLng - radiusDeg) / tileDeg);
+  const x1 = Math.floor((maxLng + radiusDeg) / tileDeg);
+  const y0 = Math.floor((minLat - radiusDeg) / tileDeg);
+  const y1 = Math.floor((maxLat + radiusDeg) / tileDeg);
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > MAX_TILES) return null;
+  return { x0, y0, x1, y1 };
+}
+
+export function tileKey(x: number, y: number): string {
+  return `t_${x}_${y}`;
+}
+
+export function tilesInRange(range: TileRange): string[] {
+  const keys: string[] = [];
+  for (let x = range.x0; x <= range.x1; x++) {
+    for (let y = range.y0; y <= range.y1; y++) keys.push(tileKey(x, y));
+  }
+  return keys;
+}
+
+/**
+ * Tile format v2: `{"v":2,"w":[[wayId, [[lat,lng],...], tags], ...]}` — ways
+ * carry inline coordinates (tiles are self-contained, ways duplicated across
+ * tiles dedupe by way id). Node identity is synthesized from the coordinate
+ * key so ways sharing a junction node share one synthetic id (E3 relies on
+ * this for graph stitching).
+ */
+interface TileJson {
+  v: number;
+  w: [number, [number, number][], Record<string, string>][];
+}
+
+/** Per-merge state shared across the tiles of one corridor. */
+export interface TileMergeContext {
+  coordIndex: Map<string, number>;
+  wayIds: Set<number>;
+}
+
+export function createTileMergeContext(): TileMergeContext {
+  return { coordIndex: new Map(), wayIds: new Set() };
+}
+
+export function parseTileJson(
+  json: unknown,
+  bundle: WaysBundle,
+  ctx: TileMergeContext = createTileMergeContext(),
+): void {
+  const tile = json as TileJson;
+  if (!tile || tile.v !== TILE_FORMAT_VERSION || !Array.isArray(tile.w)) {
+    throw new Error('invalid tile format');
+  }
+  for (const [id, coords, tags] of tile.w) {
+    if (!Array.isArray(coords) || coords.length < 2) continue;
+    if (tags === undefined || tags['highway'] === undefined) continue;
+    const attrs = parseWayTags(tags);
+    if (!isRoutable(attrs)) continue;
+    if (ctx.wayIds.has(id)) continue;
+    ctx.wayIds.add(id);
+    const nodeIds: number[] = [];
+    for (const [lat, lng] of coords) {
+      const key = `${lat.toFixed(7)},${lng.toFixed(7)}`;
+      let nodeId = ctx.coordIndex.get(key);
+      if (nodeId === undefined) {
+        nodeId = -ctx.coordIndex.size - 1; // negative: synthetic, never collides with OSM ids
+        bundle.nodes.set(nodeId, [lat, lng]);
+        ctx.coordIndex.set(key, nodeId);
+      }
+      nodeIds.push(nodeId);
+    }
+    bundle.ways.push({ id, nodeIds, attrs });
+  }
+}
+
+interface TileManifest {
+  formatVersion: number;
+  tileDeg: number;
+  generatedAt: string;
+  region?: string;
+}
+
+class TileHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`tiles HTTP ${status}`);
+  }
+}
+
+async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new TileHttpError(res.status);
+  return (await res.json()) as unknown;
+}
+
+/**
+ * Fetch the corridor from the configured static tile host. Returns null when
+ * no host is configured, the manifest is missing/incompatible, the corridor
+ * exceeds the tile budget, or no tile in the corridor area exists (region
+ * not built) — callers fall back to the Overpass chain. Individual 404 tiles
+ * count as "no data in this tile" (region edges, lakes) and are skipped.
+ */
+export async function fetchCorridorViaTiles(
+  points: [number, number][],
+  radiusM: number,
+  signal?: AbortSignal,
+): Promise<WaysBundle | null> {
+  const base = getTileBaseUrl();
+  if (!base || points.length === 0) return null;
+
+  const meanLat = points.reduce((s, p) => s + p[1], 0) / points.length;
+  const radiusLat = radiusM / 111_320;
+  const radiusLng = radiusM / (111_320 * Math.max(0.1, Math.cos((meanLat * Math.PI) / 180)));
+  const range = corridorTileRange(points, Math.max(radiusLat, radiusLng));
+  if (!range) return null;
+
+  try {
+    const manifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
+    if (manifest.formatVersion !== TILE_FORMAT_VERSION || manifest.tileDeg !== TILE_DEG) {
+      return null;
+    }
+
+    const bundle: WaysBundle = { nodes: new Map(), ways: [] };
+    const mergeCtx = createTileMergeContext();
+    const keys = tilesInRange(range);
+    let index = 0;
+    let misses = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, keys.length) }, async () => {
+      while (index < keys.length) {
+        const key = keys[index++]!;
+        try {
+          parseTileJson(await fetchJson(`${base}/${key}.json`, signal), bundle, mergeCtx);
+        } catch (err) {
+          // empty tile — the builder never writes tiles without ways
+          if (err instanceof TileHttpError && err.status === 404) {
+            misses++;
+            continue;
+          }
+          throw err;
+        }
+      }
+    });
+    await Promise.all(workers);
+    // nothing found anywhere in the corridor area: region not built
+    if (misses === keys.length) return null;
+    return bundle;
+  } catch {
+    return null; // unconfigured, unreachable or incompatible
+  }
+}
