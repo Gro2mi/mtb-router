@@ -1,5 +1,6 @@
 /**
- * MapLibre setup (E1.2, E1.5): OpenFreeMap Liberty style, controls, and
+ * MapLibre setup (E1.2, E1.5): OpenFreeMap Bright style (high-contrast
+ * outdoor/cycling map with an extra road-visibility pass), controls, and
  * viewport persistence. OpenFreeMap serves free OSM vector tiles without an
  * API key (PLAN §4).
  */
@@ -12,8 +13,9 @@ import {
 } from 'maplibre-gl';
 import { DEFAULT_VIEWPORT, loadViewport, saveViewport } from '../state/viewport';
 import { NorthControl } from './northControl';
+import { applyOutdoorContrast } from './outdoorContrast';
 
-const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
 export interface MapHandle {
   map: Map;
@@ -53,6 +55,12 @@ export function createMap(container: HTMLElement): MapHandle {
     trackUserLocation: true,
   });
   map.addControl(geolocate, 'top-right');
+
+  // high-visibility roads (tracks/cycleways are nearly invisible in stock Bright)
+  map.on('load', () => applyOutdoorContrast(map));
+
+  // test seam: lets e2e inspect map layers without a component handle
+  (window as unknown as Record<string, unknown>).__mtbrMap = map;
 
   const onMoveEnd = (): void => {
     const center = map.getCenter();

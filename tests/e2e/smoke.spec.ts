@@ -14,6 +14,25 @@ test('app loads with a working map (sized container, worker, style)', async ({ p
   await expect(page.locator('.maplibregl-ctrl-attrib')).toContainText('OpenStreetMap', {
     timeout: 20_000,
   });
+
+  // outdoor contrast pass: dedicated high-visibility track/cycleway layers
+  // (they are added in the map's 'load' handler — poll for them)
+  await expect
+    .poll(
+      async () => {
+        const contrast = await page.evaluate(() => {
+          const map = (window as unknown as { __mtbrMap?: { getLayer(id: string): unknown } })
+            .__mtbrMap;
+          return {
+            track: map ? Boolean(map.getLayer('mtbr-track')) : false,
+            cycleway: map ? Boolean(map.getLayer('mtbr-cycleway')) : false,
+          };
+        });
+        return contrast.track && contrast.cycleway;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
 });
 
 test('language switches to German and survives reload', async ({ page }) => {

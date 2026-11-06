@@ -112,5 +112,5 @@ Rebuild whenever you want fresher data (Geofabrik extracts update daily).
 ## Attribution
 
 - Map & routing data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL)
-- Vector tiles hosted by [OpenFreeMap](https://openfreemap.org)
+- Vector tiles hosted by [OpenFreeMap](https://openfreemap.org); map style: OpenFreeMap **Bright** with a high-visibility contrast pass (dedicated track/cycleway layers)
 - Elevation: Mapzen / AWS Terrain Tiles (public domain)

@@ -182,7 +182,7 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 > silently killing every worker plan; fixed with `$state.snapshot` at the worker boundary. Worker
 > reroute reuses the loaded graph/snaps. E2E covers reroute-without-refetch (Overpass counter),
 > hard-limit exclusion surfacing as `no_route` error, and preset recovery. Note: route segment
-> *coloring* by difficulty (making limit changes visible on the map) lands with E5 rendering.
+> _coloring_ by difficulty (making limit changes visible on the map) lands with E5 rendering.
 
 **Goal:** Make the difficulty model tangible and tweakable with one hand.
 
