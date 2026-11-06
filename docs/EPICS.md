@@ -171,7 +171,18 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 
 ---
 
-## E4 — Difficulty preference UI · M · M2 · deps: E3
+## E4 — Difficulty preference UI · M · M2 · deps: E3 · **done (2026-11-06)**
+
+> **Implementation notes (2026-11-06):** `src/lib/ui/presets.ts` (pure presets + `matchPreset` +
+> `clampBand`, unit-tested), `RangeSlider.svelte` (two stacked native ranges, keyboard accessible,
+> accent selection band), `Difficulty.svelte` (uphill/downhill MTB+SAC dual sliders, 4-step forest
+> preference, untagged toggle, scale education block), planning store gained reactive `settings` +
+> `setSettings` (300 ms debounce → worker `reroute`, no refetch). **Key gotcha:** Svelte `$state`
+> proxies are not structured-cloneable — the plan message carried a proxy and `postMessage` threw,
+> silently killing every worker plan; fixed with `$state.snapshot` at the worker boundary. Worker
+> reroute reuses the loaded graph/snaps. E2E covers reroute-without-refetch (Overpass counter),
+> hard-limit exclusion surfacing as `no_route` error, and preset recovery. Note: route segment
+> *coloring* by difficulty (making limit changes visible on the map) lands with E5 rendering.
 
 **Goal:** Make the difficulty model tangible and tweakable with one hand.
 
