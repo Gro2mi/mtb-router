@@ -13,7 +13,7 @@
   "route_empty_hint": "Aktiviere den Planungsmodus (Fadenkreuz-Schaltfläche) und tippe auf die Karte, um Wegpunkte hinzuzufügen – oder lange drücken.",
   "route_next_hint": "Die Routenberechnung kommt mit der Routing-Engine in Meilenstein M1 (E3). Marker ziehen zum Verschieben, Marker antippen zum Löschen.",
   "difficulty_empty_hint": "Die Schwierigkeitseinstellungen kommen mit der Routing-Engine in Meilenstein M1.",
-  "routes_empty_hint": "Speichern und Laden von Touren kommt in Meilenstein M2.",
+  "routes_empty_hint": "Noch nichts gespeichert – plane eine Route und speichere sie hier.",
   "language": "Sprache",
   "geolocation_denied": "Standortberechtigung wurde abgelehnt",
   "geolocation_unavailable": "Standort ist auf diesem Gerät nicht verfügbar",
@@ -72,5 +72,14 @@
   "diff_forest_3": "Viel",
   "diff_avoid_untagged": "Unklassifizierte Singletrails meiden",
   "diff_legend": "Schwierigkeiten stammen aus OSM-Tags; fehlende Werte werden konservativ abgeleitet.",
-  "loading_data": "Lade Kartendaten…"
+  "loading_data": "Lade Kartendaten…",
+  "route_name_placeholder": "Routenname…",
+  "route_save": "Speichern",
+  "route_saved": "Gespeichert: {name}",
+  "route_loaded": "Geladen: {name}",
+  "route_rename": "Umbenennen",
+  "route_duplicate": "Kopie",
+  "route_delete": "Löschen",
+  "routes_save_hint": "Zuerst eine Route planen (zwei Wegpunkte), dann hier speichern.",
+  "gpx_failed": "GPX-Export fehlgeschlagen"
 }

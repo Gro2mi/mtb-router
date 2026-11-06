@@ -13,7 +13,7 @@
   "route_empty_hint": "Toggle planning mode (target button) and tap the map to add waypoints — or long-press the map.",
   "route_next_hint": "Route calculation arrives with the routing engine in milestone M1 (E3). Drag markers to move, tap a marker to delete.",
   "difficulty_empty_hint": "Difficulty preferences arrive with the routing engine in milestone M1.",
-  "routes_empty_hint": "Saving and loading routes arrives in milestone M2.",
+  "routes_empty_hint": "Nothing saved yet — plan a route and save it to find it here.",
   "language": "Language",
   "geolocation_denied": "Location permission was denied",
   "geolocation_unavailable": "Location is unavailable on this device",
@@ -72,5 +72,14 @@
   "diff_forest_3": "High",
   "diff_avoid_untagged": "Avoid untagged singletrail",
   "diff_legend": "Difficulty comes from OSM tags where available; untagged ways get a conservative inference.",
-  "loading_data": "Loading map data…"
+  "loading_data": "Loading map data…",
+  "route_name_placeholder": "Route name…",
+  "route_save": "Save",
+  "route_saved": "Saved: {name}",
+  "route_loaded": "Loaded: {name}",
+  "route_rename": "Rename",
+  "route_duplicate": "Copy",
+  "route_delete": "Delete",
+  "routes_save_hint": "Plan a route first (two waypoints), then save it here.",
+  "gpx_failed": "GPX export failed"
 }

@@ -220,7 +220,28 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 
 ---
 
-## E6 — Save/load & GPX export · M · M2 · deps: E5
+## E6 — Save/load & GPX export · M · M2 · deps: E5 · **done (2026-11-06), done before E5 (see note)**
+
+> **Implementation notes (2026-11-06):** Implemented **before E5** — all three stories need only the
+> E3/E4 data (RouteResult, settings, waypoints), not E5's rendering; the load-flow restores stats and
+> a basic route line already. Modules: `src/lib/routes/serialization.ts` (StoredRoute + round-trip +
+> sameGeometry + slugify), `src/lib/routes/routeStore.ts` (CRUD over an injectable RouteKv — real
+> IDB `routes` store [DB v3] in the app, MemoryRouteKv in tests), `src/lib/gpx/gpx.ts` (pure GPX 1.1
+> builder: one trkseg per leg, joint-point dedupe, `<ele>` omitted in degraded mode, XML-escaped),
+> `src/lib/gpx/download.ts` (Blob download + Web Share API when the platform can share files),
+> `src/lib/routes/routeLibrary.svelte.ts` (UI orchestration), `RoutesTab.svelte` (save with name,
+> list with load / GPX / rename / duplicate / delete), settings persistence in
+> `settingsPersist.ts` (localStorage — **deviation**: epic said IDB `settings`; synced hydration at
+> module init avoids a double worker plan on startup, viewport/locale were already localStorage).
+> Load flow: restore settings (no reroute) → waypoints.restore() (App effect replans; corridor is
+> IDB-cached) → saved geometry seeded for instant display → viewport flyTo.
+> **Bug class worth remembering (3rd occurrence):** reactive `$state` proxies cross every
+> serialization boundary — `structuredClone(proxy)` throws DataCloneError, and here it was *silently
+> swallowed* by the IDB put's best-effort catch (save + rename both no-oped). Fixes:
+> `$state.snapshot()` in saveCurrent and a JSON deep-clone inside the IDB put boundary. Also: Svelte
+> bind:value sets properties, not attributes — `input[value=…]` CSS doesn't match in Playwright.
+> E2E: save→reload→load (stats + snapped waypoints restored), GPX download content assertions,
+> rename/delete. 159 unit + 20 e2e green. Custom preset management from E4.2 remains open.
 
 **Goal:** Routes survive reload and ride on a bike computer.
 

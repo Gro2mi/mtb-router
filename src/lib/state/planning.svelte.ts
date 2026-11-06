@@ -7,7 +7,8 @@ import { getTileBaseUrl } from '../osm/staticTiles';
 import type { SnapResult } from '../osm/snapIndex';
 import { waypoints } from '../waypoints/store.svelte';
 import { getEngineHost } from '../../engine/host';
-import { DEFAULT_SETTINGS, type RouteResult, type RiderSettings } from '../../engine/protocol';
+import { type RouteResult, type RiderSettings } from '../../engine/protocol';
+import { loadRiderSettings, saveRiderSettings } from './settingsPersist';
 
 export type CorridorPhase = 'idle' | 'loading' | 'ready' | 'error';
 export type PlanningMode = 'browse' | 'plan';
@@ -41,8 +42,8 @@ class PlanningState {
   errorCode = $state<'corridor' | 'no_route' | 'waypoint' | null>(null);
 
   snapRadiusM = $state<number>(loadSnapRadius());
-  /** rider difficulty settings (E4) — edited in the Difficulty tab */
-  settings = $state<RiderSettings>(DEFAULT_SETTINGS);
+  /** rider difficulty settings (E4) — edited in the Difficulty tab, persisted (E6.3) */
+  settings = $state<RiderSettings>(loadRiderSettings());
 
   private host = getEngineHost({
     onProgress: (stage) => {
@@ -87,10 +88,18 @@ class PlanningState {
     // $state.snapshot strips Svelte proxies — proxies cannot be structured-
     // cloned across postMessage (would kill every worker plan silently)
     this.settings = $state.snapshot(next);
+    saveRiderSettings(this.settings);
     clearTimeout(this.rerouteTimer);
     this.rerouteTimer = setTimeout(() => {
       if (this.lastPoints.length >= 2) this.host.reroute($state.snapshot(this.settings));
     }, 300);
+  }
+
+  /** Restore saved settings without triggering a reroute (E6.3). */
+  restoreSettings(saved: RiderSettings): void {
+    clearTimeout(this.rerouteTimer);
+    this.settings = $state.snapshot(saved);
+    saveRiderSettings(this.settings);
   }
 
   setSnapRadius(radiusM: number): void {

@@ -1,12 +1,12 @@
 /**
- * IndexedDB singleton for corridor + elevation tile caches (PLAN §12).
- * One database, versioned; all stores created in a single upgrade path so
- * multiple modules can share the connection safely.
+ * IndexedDB singleton for corridor + elevation tile caches and saved routes
+ * (PLAN §12). One database, versioned; all stores created in a single
+ * upgrade path so multiple modules can share the connection safely.
  */
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'mtb-router';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase> | undefined;
 
@@ -18,6 +18,9 @@ export function getDB(): Promise<IDBPDatabase> {
       }
       if (!database.objectStoreNames.contains('elevationTiles')) {
         database.createObjectStore('elevationTiles');
+      }
+      if (!database.objectStoreNames.contains('routes')) {
+        database.createObjectStore('routes');
       }
     },
   });

@@ -2,6 +2,7 @@
   import { i18n } from '../i18n.svelte';
   import LocaleSwitcher from './LocaleSwitcher.svelte';
   import Difficulty from './Difficulty.svelte';
+  import RoutesTab from './RoutesTab.svelte';
   import { planning, SNAP_RADIUS_CHOICES } from '../state/planning.svelte';
   import { waypoints } from '../waypoints/store.svelte';
   import { getTileBaseUrl, setTileBaseUrl } from '../osm/staticTiles';
@@ -230,12 +231,7 @@
           {:else if activeTab === 'difficulty'}
             <Difficulty />
           {:else}
-            <p
-              class="text-sm leading-relaxed text-slate-600 dark:text-slate-300"
-              data-testid="routes-empty"
-            >
-              {i18n.m.routes_empty_hint()}
-            </p>
+            <RoutesTab />
           {/if}
         </div>
 

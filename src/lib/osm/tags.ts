@@ -49,8 +49,9 @@ export interface WayAttrs {
   /** oneway:bicycle — 'no' exempts bikes from a road oneway */
   onewayBicycle?: string;
   isSteps: boolean;
-  /** riding prohibited here — the way stays routable at walking (portage) cost */
-  walkingOnly: boolean;
+  /** riding prohibited here — the way stays routable at walking (portage) cost.
+   *  Derived by parseWayTags; optional so hand-built fixtures stay legal. */
+  walkingOnly?: boolean;
 }
 
 /** Parse a scale value like "2", "2+" or "2-" into 2 / 2.5 / 1.5. */

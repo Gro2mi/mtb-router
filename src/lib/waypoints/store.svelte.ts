@@ -118,6 +118,14 @@ export class WaypointStore {
     this.commit([]);
   }
 
+  /** Replace the whole list without a history entry (route restore, E6.1). */
+  restore(items: Waypoint[]): void {
+    this.past = [];
+    this.future = [];
+    this.waypoints = cloneList(items);
+    this.syncFlags();
+  }
+
   /**
    * Re-snap every waypoint against the current index (E2.5). No history
    * entry; skips the write entirely when nothing changed (keeps reactive
