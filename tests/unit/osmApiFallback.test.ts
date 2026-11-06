@@ -99,7 +99,9 @@ describe('parseOsmXml', () => {
     expect(bundle.nodes.get(103)).toEqual([47.0, 8.002]);
 
     const wayIds = bundle.ways.map((w) => w.id);
-    expect(wayIds).toEqual([1001, 1002]); // 1003 bicycle=no, 1004 single node, 1005 no highway
+    // 1003 bicycle=no footway kept as a WALKING edge (filter v2);
+    // 1004 single node, 1005 no highway still dropped
+    expect(wayIds).toEqual([1001, 1002, 1003]);
 
     const track = bundle.ways[0]!;
     expect(track.attrs.highway).toBe('track');
@@ -128,6 +130,6 @@ describe('parseOsmXml', () => {
     const bundle = emptyBundle();
     parseOsmXml(XML, bundle);
     parseOsmXml(XML, bundle);
-    expect(bundle.ways.map((w) => w.id)).toEqual([1001, 1002]);
+    expect(bundle.ways.map((w) => w.id)).toEqual([1001, 1002, 1003]);
   });
 });

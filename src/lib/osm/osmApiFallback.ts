@@ -123,9 +123,14 @@ async function fetchBox(
   signal: AbortSignal | undefined,
   depth = 0,
 ): Promise<void> {
+  // query a slightly LARGER box than the coverage tile: ways crossing the box
+  // seam arrive complete from the neighbor box instead of being cut off
+  // (the /map endpoint omits nodes outside the bbox, which would drop such
+  // ways at parse time and leave visible-but-unsnappable trail gaps)
+  const pad = 0.0003; // ~35 m
   const url =
-    `${OSM_API_MAP}?bbox=${box.west.toFixed(5)},${box.south.toFixed(5)},` +
-    `${box.east.toFixed(5)},${box.north.toFixed(5)}`;
+    `${OSM_API_MAP}?bbox=${(box.west - pad).toFixed(5)},${(box.south - pad).toFixed(5)},` +
+    `${(box.east + pad).toFixed(5)},${(box.north + pad).toFixed(5)}`;
   const res = await fetch(url, { signal });
   if (res.status === 400 && depth < 3) {
     // "too many nodes" — read body to be sure, then split into quadrants

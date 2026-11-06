@@ -52,9 +52,13 @@ describe('isRoutable (PLAN §7.7)', () => {
     expect(isRoutable(attrs({ highway: 'tertiary', motorroad: 'yes' }))).toBe(false);
   });
 
-  it('excludes bicycle=no/private', () => {
-    expect(isRoutable(attrs({ highway: 'track', bicycle: 'no' }))).toBe(false);
-    expect(isRoutable(attrs({ highway: 'path', bicycle: 'private' }))).toBe(false);
+  it('bicycle=no/private ways stay in the data as walking-only edges (filter v2)', () => {
+    expect(isRoutable(attrs({ highway: 'track', bicycle: 'no' }))).toBe(true);
+    expect(isRoutable(attrs({ highway: 'path', bicycle: 'private' }))).toBe(true);
+    expect(attrs({ highway: 'path', bicycle: 'no' }).walkingOnly).toBe(true);
+    expect(attrs({ highway: 'footway' }).walkingOnly).toBe(true);
+    expect(attrs({ highway: 'footway', bicycle: 'yes' }).walkingOnly).toBe(false);
+    expect(attrs({ highway: 'track' }).walkingOnly).toBe(false);
   });
 
   it('keeps bicycle=destination', () => {
@@ -71,12 +75,12 @@ describe('isRoutable (PLAN §7.7)', () => {
     );
   });
 
-  it('excludes plain footways but keeps bike-permitted or segregated ones', () => {
-    expect(isRoutable(attrs({ highway: 'footway' }))).toBe(false);
-    expect(isRoutable(attrs({ highway: 'pedestrian' }))).toBe(false);
+  it('footways/pedestrian stay as walking edges, bike-permitted ones rideable', () => {
+    expect(isRoutable(attrs({ highway: 'footway' }))).toBe(true);
+    expect(isRoutable(attrs({ highway: 'pedestrian' }))).toBe(true);
     expect(isRoutable(attrs({ highway: 'footway', bicycle: 'yes' }))).toBe(true);
     expect(isRoutable(attrs({ highway: 'footway', bicycle: 'designated' }))).toBe(true);
-    expect(isRoutable(attrs({ highway: 'footway', segregated: 'yes' }))).toBe(true);
+    expect(attrs({ highway: 'footway', segregated: 'yes' }).walkingOnly).toBe(true);
   });
 
   it('keeps steps as portage candidates', () => {

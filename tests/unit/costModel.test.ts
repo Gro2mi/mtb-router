@@ -217,9 +217,22 @@ const ROWS: Row[] = [
   },
   // --- access interplay (filter cases from E2 must still route) ---
   {
-    name: '30 bicycle=no footway was filtered at parse time (defensive)',
+    name: '30 bicycle=no footway is a walking edge — passes at walking cost',
     tags: { highway: 'footway', bicycle: 'no' },
-    expect: 'ok', // cost model itself doesn't exclude; the filter drops the way
+    expect: 'ok',
+    check: (r) => Math.abs(r.costFwd - 1000 / 1.25) < 1,
+  },
+  {
+    name: '30b walking edge ignores MTB bands (max 0 still passes)',
+    tags: { highway: 'footway', bicycle: 'no' },
+    settings: { uphill: { mtb: { min: 0, max: 0 }, sac: { min: 1, max: 3 } } },
+    climbFwd: 0.1,
+    expect: 'ok',
+  },
+  {
+    name: '30c walking edge still respects SAC safety bands',
+    tags: { highway: 'footway', bicycle: 'no', sac_scale: 'demanding_alpine_hiking' },
+    expect: 'excludedFwd',
   },
   {
     name: '31 access=private track with bicycle=yes stays routable',

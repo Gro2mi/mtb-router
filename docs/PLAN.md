@@ -263,18 +263,21 @@ cost_d(e) = seconds-equivalent;  excluded_d(e) = ∞
 The cost model is a **pure module** (`src/engine/cost/`): `(wayAttrs, slopeUp, slopeDown, settings) →
 {costFwd, costBwd, excludedFwd, excludedBwd}` — tested against a fixture table (≥ 30 cases).
 
-### 7.7 Access & routability filter v1
+### 7.7 Access & routability filter v2
 
 Include `highway ∈ {track, path, cycleway, bridleway, service, unclassified, residential,
-living_street, tertiary, secondary, pedestrian}`, then exclude:
+living_street, tertiary, secondary, pedestrian, footway, steps}`, then exclude entirely:
 
-- `bicycle ∈ {no, private}` (and `:forward`/`:backward` direction variants)
 - `access ∈ {no, private}` unless `bicycle ∈ {yes, designated, permissive}`
 - `highway ∈ {motorway, trunk, …links}`, `motorroad=yes`
-- `footway`/`pedestrian` only if `bicycle ∈ {yes, designated, permissive}` or `segregated=yes`
-- Steps: kept as portage edges (walking cost), band-gated via §7.5 defaults.
 
-Country-specific implied-access differences are approximated globally (documented limitation).
+**Walking edges (filter v2, Nockspitze feedback):** riding-prohibited ways — `bicycle ∈ {no,
+private}`, plain `footway`/`pedestrian`, steps — are **not dropped**: they become walking-only
+edges at portage cost (§7.6 push model), so **every trail the map displays is a snap target**.
+Walking edges ignore MTB bands (no riding happens on them) but SAC safety bands still apply.
+Isolated network components are kept as well (snap target ✓, route fails with a clear error if
+truly disconnected). Country-specific implied-access differences are approximated globally
+(documented limitation).
 
 ### 7.8 Corridor miss & widening
 

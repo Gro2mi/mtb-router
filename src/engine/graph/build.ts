@@ -70,25 +70,7 @@ export function buildGraph(bundle: WaysBundle): Graph {
     lng.push(coord[1]);
   }
 
-  // candidate segments + union-find components
-  const parent = new Int32Array(lat.length);
-  for (let i = 0; i < parent.length; i++) parent[i] = i;
-  const find = (x: number): number => {
-    let root = x;
-    while (parent[root] !== root) root = parent[root]!;
-    while (parent[x] !== root) {
-      const next = parent[x]!;
-      parent[x] = root;
-      x = next;
-    }
-    return root;
-  };
-  const union = (a: number, b: number): void => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent[ra] = rb;
-  };
-
+  // segments over all routable ways (no component filter — see note above)
   const wayAttrs: WayAttrs[] = [];
   const wayIds: number[] = [];
   const waySegIdx = new Map<number, number[]>();
@@ -105,37 +87,25 @@ export function buildGraph(bundle: WaysBundle): Graph {
       if (u === undefined || v === undefined || u === v) continue;
       const lenM = haversineM(lng[u]!, lat[u]!, lng[v]!, lat[v]!);
       if (lenM <= 0) continue;
-      union(u, v);
       candidates.push({ u, v, wayIdx, lenM, dz: 0 });
       candidateWay.push(wayIdx);
     }
   }
 
-  // keep only the largest connected component (PLAN E3.4)
-  const compSize = new Map<number, number>();
-  for (let i = 0; i < lat.length; i++) {
-    const root = find(i);
-    compSize.set(root, (compSize.get(root) ?? 0) + 1);
-  }
-  let bestRoot = 0;
-  let bestSize = -1;
-  for (const [root, size] of compSize) {
-    if (size > bestSize) {
-      bestSize = size;
-      bestRoot = root;
-    }
-  }
-
-  const segments: GraphSegment[] = [];
+  // all components kept (v2): isolated trails (summit paths, farm stubs) must
+  // remain snap targets — a route into a disconnected component fails with a
+  // clear error instead of the trail silently vanishing from the snap index
+  const segments = candidates;
   const keptWaySet = new Set<number>();
-  for (let i = 0; i < candidates.length; i++) {
-    if (find(candidates[i]!.u) === bestRoot) {
-      const seg = candidates[i]!;
-      seg.wayIdx = candidateWay[i]!;
-      segs_of_way(waySegIdx, wayIds[candidateWay[i]!]!).push(segments.length);
-      segments.push(seg);
-      keptWaySet.add(wayIds[candidateWay[i]!]!);
+  for (let i = 0; i < segments.length; i++) {
+    const wayId = wayIds[candidateWay[i]!]!;
+    keptWaySet.add(wayId);
+    let list = waySegIdx.get(wayId);
+    if (!list) {
+      list = [];
+      waySegIdx.set(wayId, list);
     }
+    list.push(i);
   }
 
   // CSR build (typed arrays)
@@ -189,14 +159,4 @@ export function buildGraph(bundle: WaysBundle): Graph {
     waySegIdx,
     keptWays,
   };
-}
-
-/** helper kept separate so the main loop stays linear */
-function segs_of_way(map: Map<number, number[]>, wayId: number): number[] {
-  let list = map.get(wayId);
-  if (!list) {
-    list = [];
-    map.set(wayId, list);
-  }
-  return list;
 }

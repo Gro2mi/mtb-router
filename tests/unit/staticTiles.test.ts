@@ -81,7 +81,7 @@ describe('builder round trip (XML -> tiles -> bundle -> snap)', () => {
   it('round-trips through the provider merge into a working snap index', async () => {
     const { bundle } = await buildBundleFromFixtureXml();
     // track, path and residential are routable; footway (bicycle=no) filtered
-    expect(bundle.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1004, 1005]);
+    expect(bundle.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1003, 1004, 1005]);
 
     const index = new SnapIndex(bundle);
     const snap = index.snap(8.002, 47.0002 - 0.0002, 50); // ~22 m south of the track
@@ -153,7 +153,7 @@ describe('fetchCorridorViaTiles provider', () => {
     try {
       const bundle = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
       expect(bundle).not.toBeNull();
-      expect(bundle!.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1004, 1005]);
+      expect(bundle!.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1003, 1004, 1005]);
       const index = new SnapIndex(bundle!);
       expect(index.snap(8.0015, 47.0, 10)!.wayId).toBe(1001);
       // manifest + 4 corridor tiles requested (x 79..80, y 469..470)

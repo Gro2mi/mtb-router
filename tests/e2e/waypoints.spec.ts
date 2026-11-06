@@ -87,14 +87,14 @@ test('plan mode: taps add waypoints that snap to the nearest way', async ({ page
   await expect(page.getByTestId('waypoint-count')).toContainText('Waypoints: 2');
 });
 
-test('footways with bicycle=no are never snap targets', async ({ page }) => {
+test('footways with bicycle=no snap as walking edges (filter v2)', async ({ page }) => {
   await setupPage(page);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
-  // ~30 m north of the excluded footway, > 50 m from every routable way
-  // -> the waypoint must stay unsnapped (with its warning styling)
+  // ~30 m north of the footway — walking edges are snap targets since the
+  // Nockspitze fix (displayed trails must be snappable)
   await canvas(page).click({ position: TAP_NEAR_FOOTWAY });
-  await expect(page.locator('.mtbr-waypoint[data-snapped="false"]')).toHaveCount(1, {
+  await expect(page.locator('.mtbr-waypoint[data-snapped="true"]')).toHaveCount(1, {
     timeout: 10_000,
   });
 });

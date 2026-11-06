@@ -49,6 +49,8 @@ export interface WayAttrs {
   /** oneway:bicycle — 'no' exempts bikes from a road oneway */
   onewayBicycle?: string;
   isSteps: boolean;
+  /** riding prohibited here — the way stays routable at walking (portage) cost */
+  walkingOnly: boolean;
 }
 
 /** Parse a scale value like "2", "2+" or "2-" into 2 / 2.5 / 1.5. */
@@ -64,7 +66,7 @@ export function parseScaleValue(raw: string | undefined): number | undefined {
 }
 
 export function parseWayTags(tags: Record<string, string> = {}): WayAttrs {
-  return {
+  const attrs: WayAttrs = {
     highway: tags['highway'] ?? '',
     surface: tags['surface'],
     tracktype: tags['tracktype'],
@@ -82,29 +84,39 @@ export function parseWayTags(tags: Record<string, string> = {}): WayAttrs {
     oneway: tags['oneway'],
     onewayBicycle: tags['oneway:bicycle'],
     isSteps: tags['highway'] === 'steps',
+    walkingOnly: false,
   };
+  attrs.walkingOnly = isWalkingOnly(attrs);
+  return attrs;
 }
 
 /**
- * Way-level bicycle routability per PLAN §7.7. Directional narrowing
- * (`bicycle:forward/backward`) is left to the E3 cost model; here a way is
- * dropped only when it is unusable in *no* direction.
+ * Riding prohibited / pointless on this way? Walking ways remain in the data
+ * and stay snap/routable at walking (portage) cost — displayed trails must be
+ * snappable (Nockspitze feedback), the cost model prices them as walking.
+ */
+export function isWalkingOnly(attrs: WayAttrs): boolean {
+  if (attrs.isSteps) return true;
+  if (attrs.bicycle !== undefined && BLOCKING.has(attrs.bicycle)) return true;
+  const footPath =
+    attrs.highway === 'footway' || attrs.highway === 'pedestrian' || attrs.highway === 'steps';
+  return footPath && !(attrs.bicycle !== undefined && BIKE_PERMITTED.has(attrs.bicycle));
+}
+
+/**
+ * Way-level bicycle routability per PLAN §7.7 (filter v2). Riding-prohibited
+ * ways (footways, bicycle=no) are NOT dropped — they become walking-only
+ * edges so every displayed trail is a snap target; the cost model prices
+ * them as walking (portage). Dropped entirely: motorized-only classes,
+ * motorroad, and access-blocked ways without explicit bike permission.
  */
 export function isRoutable(attrs: WayAttrs): boolean {
   if (!ALLOWED_HIGHWAYS.has(attrs.highway)) return false; // also excludes motorway/trunk(+links)
   if (attrs.motorroad === 'yes') return false;
-  if (attrs.bicycle !== undefined && BLOCKING.has(attrs.bicycle)) return false;
   if (
     attrs.access !== undefined &&
     BLOCKING.has(attrs.access) &&
     !(attrs.bicycle !== undefined && BIKE_PERMITTED.has(attrs.bicycle))
-  ) {
-    return false;
-  }
-  if (
-    (attrs.highway === 'footway' || attrs.highway === 'pedestrian') &&
-    !(attrs.bicycle !== undefined && BIKE_PERMITTED.has(attrs.bicycle)) &&
-    attrs.segregated !== 'yes'
   ) {
     return false;
   }

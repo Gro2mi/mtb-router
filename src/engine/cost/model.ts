@@ -210,6 +210,17 @@ function directionCost(
   const band = isClimb ? settings.uphill : settings.downhill;
   const mtb = isClimb ? eff.mtbUp : eff.mtbDown;
 
+  // riding-prohibited ways (footways, bicycle=no) are walkable always — they
+  // ignore MTB bands so every displayed trail stays snap/routable, but SAC
+  // bands still apply (alpine safety)
+  if (attrs.walkingOnly) {
+    if (eff.sac > band.sac.max) return { cost: Infinity, excluded: true };
+    return {
+      cost: lenM / COST.PUSH_SPEED_MS + (climb * lenM) / (COST.PUSH_CLIMB_VMH * VMH_TO_MS),
+      excluded: false,
+    };
+  }
+
   // hard upper limits in this direction (PLAN §7.3)
   const excluded = mtb > band.mtb.max || eff.sac > band.sac.max;
   if (excluded) return { cost: Infinity, excluded: true };

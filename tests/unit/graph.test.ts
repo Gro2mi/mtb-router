@@ -102,15 +102,16 @@ describe('buildGraph', () => {
     expect(g.wayIds[g.segments[0]!.wayIdx]).toBe(10);
   });
 
-  it('drops small disconnected components', () => {
+  it('keeps disconnected components (v2): isolated trails stay snap targets', () => {
     const b = bundleFrom(nodes, [
       { id: 10, nodes: [1, 2, 3] },
-      { id: 99, nodes: [5, 6] }, // isolated pair — must be dropped
+      { id: 99, nodes: [5, 6] }, // isolated pair — kept since filter v2
     ]);
     const g = buildGraph(b);
-    expect(g.segments).toHaveLength(2);
-    expect(g.keptWays.map((w) => w.id)).toEqual([10]);
-    expect(g.waySegIdx.has(99)).toBe(false);
+    expect(g.segments).toHaveLength(3);
+    expect(g.keptWays.map((w) => w.id).sort()).toEqual([10, 99]);
+    expect(g.waySegIdx.has(99)).toBe(true);
+    // routing into the isolated component still fails (astar tests cover that)
   });
 
   it('oneway=yes yields a single directed edge', () => {
