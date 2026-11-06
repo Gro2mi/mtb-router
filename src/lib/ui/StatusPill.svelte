@@ -16,7 +16,7 @@
       {planning.widening
         ? i18n.m.widening_search()
         : planning.stage === 0
-          ? i18n.m.loading_tiles()
+          ? i18n.m.loading_data()
           : planning.stage === 1
             ? i18n.m.loading_trails()
             : planning.stage === 2

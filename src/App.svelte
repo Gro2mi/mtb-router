@@ -14,6 +14,7 @@
   import StatusPill from './lib/ui/StatusPill.svelte';
 
   let mapContainer: HTMLDivElement;
+
   let mapHandle: MapHandle | undefined = $state();
   let layer: WaypointLayer | undefined = $state();
   let routeLayer: RouteLayer | undefined = $state();

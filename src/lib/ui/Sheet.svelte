@@ -1,6 +1,7 @@
 <script lang="ts">
   import { i18n } from '../i18n.svelte';
   import LocaleSwitcher from './LocaleSwitcher.svelte';
+  import Difficulty from './Difficulty.svelte';
   import { planning, SNAP_RADIUS_CHOICES } from '../state/planning.svelte';
   import { waypoints } from '../waypoints/store.svelte';
   import { getTileBaseUrl, setTileBaseUrl } from '../osm/staticTiles';
@@ -227,12 +228,7 @@
               </p>
             {/if}
           {:else if activeTab === 'difficulty'}
-            <p
-              class="text-sm leading-relaxed text-slate-600 dark:text-slate-300"
-              data-testid="difficulty-empty"
-            >
-              {i18n.m.difficulty_empty_hint()}
-            </p>
+            <Difficulty />
           {:else}
             <p
               class="text-sm leading-relaxed text-slate-600 dark:text-slate-300"

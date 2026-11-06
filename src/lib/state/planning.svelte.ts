@@ -16,11 +16,6 @@ const SNAP_RADIUS_KEY = 'mtbr.snapRadius.v1';
 export const SNAP_RADIUS_CHOICES = [10, 30, 50, 100, 200] as const;
 const DEFAULT_SNAP_RADIUS_M = 50;
 
-/** rider settings — UI editing arrives with E4; defaults for now */
-export function riderSettings(): RiderSettings {
-  return DEFAULT_SETTINGS;
-}
-
 function loadSnapRadius(): number {
   try {
     const raw = localStorage.getItem(SNAP_RADIUS_KEY);
@@ -46,6 +41,8 @@ class PlanningState {
   errorCode = $state<'corridor' | 'no_route' | 'waypoint' | null>(null);
 
   snapRadiusM = $state<number>(loadSnapRadius());
+  /** rider difficulty settings (E4) — edited in the Difficulty tab */
+  settings = $state<RiderSettings>(DEFAULT_SETTINGS);
 
   private host = getEngineHost({
     onProgress: (stage) => {
@@ -75,6 +72,7 @@ class PlanningState {
 
   private lastPoints: [number, number][] = [];
   private lastRetry = 0;
+  private rerouteTimer: ReturnType<typeof setTimeout> | undefined;
 
   setMode(mode: PlanningMode): void {
     this.mode = mode;
@@ -82,6 +80,17 @@ class PlanningState {
 
   toggleMode(): void {
     this.mode = this.mode === 'plan' ? 'browse' : 'plan';
+  }
+
+  /** Difficulty change (E4.3): debounced recompute + reroute, no refetch. */
+  setSettings(next: RiderSettings): void {
+    // $state.snapshot strips Svelte proxies — proxies cannot be structured-
+    // cloned across postMessage (would kill every worker plan silently)
+    this.settings = $state.snapshot(next);
+    clearTimeout(this.rerouteTimer);
+    this.rerouteTimer = setTimeout(() => {
+      if (this.lastPoints.length >= 2) this.host.reroute($state.snapshot(this.settings));
+    }, 300);
   }
 
   setSnapRadius(radiusM: number): void {
@@ -116,7 +125,7 @@ class PlanningState {
     }
     this.phase = 'loading';
     this.errorCode = null;
-    this.host.plan(points, riderSettings(), getTileBaseUrl(), this.snapRadiusM);
+    this.host.plan(points, $state.snapshot(this.settings), getTileBaseUrl(), this.snapRadiusM);
   }
 }
 

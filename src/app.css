@@ -199,6 +199,58 @@ body {
   outline-offset: 2px;
 }
 
+/* dual-handle range sliders (E4.1): two stacked native ranges; only the
+   thumbs are pointer-interactive so both handles stay draggable */
+.mtbr-range {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.mtbr-range:focus-visible {
+  outline: none;
+}
+.mtbr-range::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.mtbr-range::-moz-range-track {
+  background: transparent;
+}
+.mtbr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid var(--mtbr-accent);
+  cursor: grab;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+}
+.mtbr-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid var(--mtbr-accent);
+  cursor: grab;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+}
+.mtbr-range::-moz-range-thumb:hover {
+  border-color: var(--mtbr-accent-strong);
+}
+.mtbr-range:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid var(--mtbr-accent);
+  outline-offset: 2px;
+}
+
 /* corridor loading spinner (E2.3) */
 .mtbr-spinner {
   width: 12px;
