@@ -1,0 +1,16 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+coverage/
+.inlang/
+src/paraglide/
+public/vendor/
+*.local
+.DS_Store
+.tilebuild/
+public/tiles/
+
+# local OSM extracts (large)
+data/
+.zcode/
