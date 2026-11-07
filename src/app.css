@@ -262,6 +262,12 @@ body {
   pointer-events: none;
 }
 
+/* segment popup beeline note */
+.mtbr-popup-beeline {
+  color: #b45309;
+  font-weight: 600;
+}
+
 /* segment popup walk note (E5.2) */
 .mtbr-segment-popup p {
   margin: 0 0 4px;

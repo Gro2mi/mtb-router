@@ -73,6 +73,8 @@ export const COST = {
   /** push/carry walking: speed m/s and climb rate vm/h */
   PUSH_SPEED_MS: 1.25,
   PUSH_CLIMB_VMH: 300,
+  /** beeline over unknown terrain (conservative off-road estimate) */
+  BEELINE_SPEED_MS: 8 / 3.6,
   /** SAC levels (T1..T6) */
   SAC_LEVELS: {
     hiking: 1,

@@ -82,6 +82,8 @@ export interface RouteSegment {
   walking?: boolean;
   /** |Δz| / length of the underlying way segment (E5.2 max slope) */
   slope?: number;
+  /** straight-line connection over terrain without trail data (user request) */
+  beeline?: boolean;
 }
 
 export interface RouteLeg {
@@ -106,6 +108,10 @@ export interface RouteResult {
   kmByMtb: number[];
   /** km on walking-only (portage) edges, excluded from kmByMtb (E5.2) */
   kmWalking?: number;
+  /** km on beeline connections, excluded from kmByMtb */
+  kmBeeline?: number;
+  /** true when any leg is a beeline (no trail connection found) */
+  hasBeelines?: boolean;
   /** corridor radius that produced this route (widening result) */
   radiusM: number;
   elevationAvailable: boolean;

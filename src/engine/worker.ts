@@ -43,6 +43,17 @@ const PROBE_RADIUS_M = 150;
 
 const post = (msg: WorkerToHost): void => self.postMessage(msg);
 
+/** display positions per waypoint: snap position when snapped, raw otherwise */
+function displayPositions(
+  points: CorridorPoint[],
+  snaps: (SnapResult | null)[],
+): [number, number][] {
+  return points.map((p, i) => {
+    const snap = snaps[i];
+    return snap ? [snap.lng, snap.lat] : [p[0], p[1]];
+  });
+}
+
 function snapAll(points: CorridorPoint[], snapRadiusM: number): (SnapResult | null)[] {
   if (!snapIndex) return points.map(() => null);
   return points.map((p) => snapIndex!.snap(p[0], p[1], snapRadiusM));
@@ -108,6 +119,7 @@ async function attempt(
   radiusM: number,
   snapRadiusM: number,
   my: number,
+  allowBeelines = false,
 ): Promise<'ok' | 'widen' | 'waypoint'> {
   post({ id, type: 'progress', stage: 0 });
   let bundle: WaysBundle | null = null;
@@ -146,11 +158,15 @@ async function attempt(
   // route FIRST on flat costs so the line appears instantly (E5 speed fix on
   // blocked networks); elevation is fetched afterwards and the route is
   // recomputed + re-posted with climb-aware costs when the data arrives
+  const positions = displayPositions(points, lastSnaps);
   try {
-    const route = planRoute(graph!, lastSnaps, settings, radiusM);
+    const route = planRoute(graph!, lastSnaps, settings, radiusM, {
+      allowBeelines,
+      positions,
+    });
     post({ id, type: 'route', route });
   } catch (e) {
-    if (e instanceof RouteBlockedError && lastSnaps.some((s) => s === null)) return 'waypoint';
+    if (e instanceof RouteBlockedError) return 'widen';
     return 'widen';
   }
   if (my !== token) return 'ok';
@@ -166,7 +182,10 @@ async function attempt(
         }
         if (my !== token) return 'ok';
         try {
-          const refined = planRoute(graph!, lastSnaps, settings, radiusM);
+          const refined = planRoute(graph!, lastSnaps, settings, radiusM, {
+            allowBeelines,
+            positions,
+          });
           post({ id, type: 'route', route: refined });
         } catch {
           // elevation made the route infeasible — keep the flat route shown
@@ -199,13 +218,19 @@ async function plan(
     const result = await attempt(id, points, settings, RADIUS_STEPS[i]!, snapRadiusM, my);
     if (my !== token) return;
     if (result === 'ok') return;
-    if (result === 'waypoint') {
-      post({ id, type: 'error', code: 'waypoint' });
-      return;
-    }
     if (i < RADIUS_STEPS.length - 1) post({ id, type: 'widening' });
   }
-  post({ id, type: 'error', code: 'no_route' });
+  // all strict attempts failed — last resort (user request): connect the
+  // blocked legs / unsnapped waypoints with beelines at the widest radius
+  await attempt(
+    id,
+    points,
+    settings,
+    RADIUS_STEPS[RADIUS_STEPS.length - 1]!,
+    snapRadiusM,
+    my,
+    true,
+  );
 }
 
 function reroute(id: number, settings: RiderSettings): void {
@@ -214,7 +239,11 @@ function reroute(id: number, settings: RiderSettings): void {
     return;
   }
   try {
-    const route = planRoute(graph, lastSnaps, settings, currentRadius);
+    const positions = displayPositions(lastPoints, lastSnaps);
+    const route = planRoute(graph, lastSnaps, settings, currentRadius, {
+      allowBeelines: true,
+      positions,
+    });
     post({ id, type: 'route', route });
   } catch {
     post({ id, type: 'error', code: 'no_route' });

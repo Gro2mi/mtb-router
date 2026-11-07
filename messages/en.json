@@ -108,5 +108,7 @@
   "preset_add_confirm": "Save",
   "preset_delete": "Delete preset {name}",
   "error_region_not_built": "This region is not in your map-data build",
-  "generic_error": "Something went wrong — please try again"
+  "generic_error": "Something went wrong — please try again",
+  "popup_beeline": "Beeline — off-trail connection (no trail data)",
+  "breakdown_beeline": "Beeline"
 }

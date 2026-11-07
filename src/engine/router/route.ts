@@ -5,11 +5,12 @@
  * around a corridor-rebuild callback.
  */
 import { computeSegmentCosts, attachWaypoints, findPath, RouteBlockedError } from './astar';
-import { effectiveDifficulty } from '../cost/model';
+import { effectiveDifficulty, COST } from '../cost/model';
 import type { SegmentCosts } from './astar';
 import type { Graph } from '../graph/build';
 import type { RiderSettings, RouteResult, RouteSegment, RouteLeg } from '../protocol';
 import type { SnapResult } from '../../lib/osm/snapIndex';
+import { haversineM } from '../../lib/osm/geo';
 
 /** Decode one hop (a→b) into travel data; virtual nodes use link portions. */
 interface Hop {
@@ -139,14 +140,64 @@ function buildSegment(graph: Graph, costs: SegmentCosts, hop: Hop): RouteSegment
   };
 }
 
-/** Route a full waypoint chain; throws RouteBlockedError on an unreachable leg. */
+/** Options for planRoute (E7 beeline fallback). */
+export interface PlanRouteOptions {
+  /** connect unfindable legs / unsnapped waypoints with a straight line */
+  allowBeelines?: boolean;
+  /** display positions per waypoint ([lng, lat]) — snap position when snapped, raw otherwise */
+  positions?: [number, number][];
+}
+
+/** A straight-line connection over terrain without trail data. */
+function beelineLeg(legIndex: number, a: [number, number], b: [number, number]): RouteLeg {
+  const distanceM = haversineM(a[0], a[1], b[0], b[1]);
+  const segment: RouteSegment = {
+    wayId: -(legIndex + 1),
+    highway: 'beeline',
+    mtbDown: 0,
+    mtbUp: 0,
+    sac: 1,
+    difficultyTagged: false,
+    coords: [
+      [a[1], a[0], null],
+      [b[1], b[0], null],
+    ],
+    distanceM,
+    ascentM: 0,
+    descentM: 0,
+    timeS: distanceM / COST.BEELINE_SPEED_MS,
+    difficulty: 0,
+    walking: false,
+    slope: 0,
+    beeline: true,
+  };
+  return {
+    segments: [segment],
+    distanceM,
+    ascentM: 0,
+    descentM: 0,
+    timeS: segment.timeS,
+  };
+}
+
+/**
+ * Route a full waypoint chain.
+ *
+ * Without `opts.allowBeelines` an unreachable leg throws RouteBlockedError
+ * (the worker widens the corridor). With beelines allowed, blocked legs and
+ * unsnapped waypoints are connected with a straight line at a conservative
+ * off-road pace — the last-resort fallback (user request).
+ */
 export function planRoute(
   graph: Graph,
   snaps: (SnapResult | null)[],
   settings: RiderSettings,
   radiusM: number,
+  opts: PlanRouteOptions = {},
 ): RouteResult {
   if (snaps.length < 2) throw new RouteBlockedError(0);
+  const allowBeelines = opts.allowBeelines === true;
+  const positions = opts.positions ?? snaps.map((s) => (s ? [s.lng, s.lat] : [0, 0]));
   const costs = computeSegmentCosts(graph, settings);
   const attach = attachWaypoints(graph, snaps);
   const ctx = { graph, costs, attach };
@@ -157,6 +208,10 @@ export function planRoute(
     try {
       chain = findPath(ctx, attach.wpNodes[i]!, attach.wpNodes[i + 1]!);
     } catch (e) {
+      if (e instanceof RouteBlockedError && allowBeelines) {
+        legs.push(beelineLeg(i, positions[i]!, positions[i + 1]!));
+        continue;
+      }
       if (e instanceof RouteBlockedError) throw new RouteBlockedError(i);
       throw e;
     }
@@ -173,10 +228,13 @@ export function planRoute(
 
   const kmByMtb = new Array(7).fill(0) as number[];
   let kmWalking = 0;
+  let kmBeeline = 0;
   let maxSlope = 0;
   for (const leg of legs) {
     for (const seg of leg.segments) {
-      if (seg.walking === true) {
+      if (seg.beeline === true) {
+        kmBeeline += seg.distanceM / 1000;
+      } else if (seg.walking === true) {
         kmWalking += seg.distanceM / 1000;
       } else {
         const level = Math.max(0, Math.min(6, seg.difficulty ?? Math.round(seg.mtbDown)));
@@ -197,6 +255,8 @@ export function planRoute(
     },
     kmByMtb: kmByMtb.map((km) => Math.round(km * 10) / 10),
     kmWalking: Math.round(kmWalking * 10) / 10,
+    kmBeeline: Math.round(kmBeeline * 10) / 10,
+    hasBeelines: kmBeeline > 0,
     radiusM,
     elevationAvailable: graph.nodeEle !== null,
   };

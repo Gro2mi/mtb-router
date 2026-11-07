@@ -22,10 +22,12 @@ const SOURCE = 'mtbr-route';
 const CASING = 'mtbr-route-casing';
 const LINE = 'mtbr-route-line';
 const WALK = 'mtbr-route-walk';
+const BEELINE = 'mtbr-route-beeline';
 
 interface SegmentProps {
   color: string;
   walking: boolean;
+  beeline: boolean;
   wayId: number;
   highway: string;
   surface: string;
@@ -39,6 +41,7 @@ function segmentProperties(seg: RouteSegment, startM: number, endM: number): Seg
   return {
     color: segmentColor(seg),
     walking: seg.walking === true,
+    beeline: seg.beeline === true,
     wayId: seg.wayId,
     highway: seg.highway,
     surface: seg.surface ?? '',
@@ -64,7 +67,12 @@ function popupContent(props: SegmentProps): HTMLElement {
     i18n.m.popup_mtb(),
     `S${props.difficulty} · ${props.tagged ? i18n.m.popup_tagged() : i18n.m.popup_inferred()}`,
   );
-  if (props.walking) {
+  if (props.beeline) {
+    const bl = document.createElement('p');
+    bl.className = 'mtbr-popup-beeline';
+    bl.textContent = i18n.m.popup_beeline();
+    container.appendChild(bl);
+  } else if (props.walking) {
     const walk = document.createElement('p');
     walk.className = 'mtbr-popup-walk';
     walk.textContent = i18n.m.popup_walking();
@@ -90,7 +98,7 @@ export class RouteLayer {
       type: 'line',
       source: SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      filter: ['!=', ['get', 'walking'], true],
+      filter: ['all', ['!=', ['get', 'walking'], true], ['!=', ['get', 'beeline'], true]],
       paint: {
         'line-color': ['get', 'color'],
         'line-width': 5,
@@ -101,11 +109,23 @@ export class RouteLayer {
       type: 'line',
       source: SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      filter: ['==', ['get', 'walking'], true],
+      filter: ['all', ['==', ['get', 'walking'], true], ['!=', ['get', 'beeline'], true]],
       paint: {
         'line-color': WALKING_COLOR,
         'line-width': 4,
         'line-dasharray': [2, 2],
+      },
+    });
+    map.addLayer({
+      id: BEELINE,
+      type: 'line',
+      source: SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      filter: ['==', ['get', 'beeline'], true],
+      paint: {
+        'line-color': '#f59e0b',
+        'line-width': 4,
+        'line-dasharray': [1.5, 2.5],
       },
     });
 
@@ -118,6 +138,7 @@ export class RouteLayer {
       const props: SegmentProps = {
         ...raw,
         walking: raw.walking === true || (raw.walking as unknown) === 'true',
+        beeline: raw.beeline === true || (raw.beeline as unknown) === 'true',
         tagged: raw.tagged === true || (raw.tagged as unknown) === 'true',
       };
       new Popup({ closeButton: false, offset: 12 })
@@ -205,7 +226,7 @@ export class RouteLayer {
 
   destroy(): void {
     this.setScrubPoint(null);
-    for (const id of [LINE, WALK, CASING]) {
+    for (const id of [BEELINE, LINE, WALK, CASING]) {
       if (this.map.getLayer(id)) this.map.removeLayer(id);
     }
     if (this.map.getSource(SOURCE)) this.map.removeSource(SOURCE);

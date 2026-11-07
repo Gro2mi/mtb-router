@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { costFor } from '../../src/engine/cost/model';
 import { DEFAULT_SETTINGS, type RiderSettings } from '../../src/engine/protocol';
+import { buildGraph } from '../../src/engine/graph/build';
+import { planRoute } from '../../src/engine/router/route';
+import type { WaysBundle } from '../../src/lib/osm/overpass';
 
 /**
  * E3.8 calibration regression fixtures (docs/CALIBRATION.md): these pin the
@@ -81,5 +84,134 @@ describe('calibration fixtures (E3.8) — pin current model behavior', () => {
       minutes(track({ 'mtb:scale': '3' }), 5_000, 0, 0.08);
     expect(totalMin).toBeGreaterThan(60);
     expect(totalMin).toBeLessThan(150);
+  });
+});
+
+function bundleFrom(
+  nodes: [number, number, number][],
+  ways: { id: number; nodes: number[] }[],
+): WaysBundle {
+  const map = new Map<number, [number, number]>();
+  for (const [id, lat, lng] of nodes) map.set(id, [lat, lng]);
+  return {
+    nodes: map,
+    ways: ways.map((w) => ({
+      id: w.id,
+      nodeIds: w.nodes,
+      attrs: { highway: 'track', tracktype: 'grade2', surface: 'compacted', isSteps: false },
+    })),
+  };
+}
+
+describe('beeline fallback (user request: connect waypoints without trail data)', () => {
+  const noConnection: RiderSettings = settings;
+
+  it('disconnected graph + allowBeelines → beeline leg at walking-pace estimate', () => {
+    // two separate components: way 10 (nodes 1-2) and way 20 (nodes 3-4)
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+          [3, 47.001, 8.0],
+          [4, 47.001, 8.001],
+        ],
+        [
+          { id: 10, nodes: [1, 2] },
+          { id: 20, nodes: [3, 4] },
+        ],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      { wayId: 20, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.001, distanceM: 0 },
+    ];
+    const result = planRoute(graph, snaps, noConnection, 2000, { allowBeelines: true });
+    expect(result.hasBeelines).toBe(true);
+    expect(result.kmBeeline).toBeGreaterThan(0);
+    // the beeline leg has a single walking-pace segment
+    const leg = result.legs.find((l) => l.segments.some((s) => s.beeline === true))!;
+    expect(leg.segments).toHaveLength(1);
+    expect(leg.segments[0]!.highway).toBe('beeline');
+    expect(leg.segments[0]!.timeS).toBeCloseTo(leg.segments[0]!.distanceM / (8 / 3.6), 0);
+  });
+
+  it('disconnected graph without allowBeelines → RouteBlockedError (widening path)', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+          [3, 47.001, 8.0],
+          [4, 47.001, 8.001],
+        ],
+        [
+          { id: 10, nodes: [1, 2] },
+          { id: 20, nodes: [3, 4] },
+        ],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      { wayId: 20, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.001, distanceM: 0 },
+    ];
+    expect(() => planRoute(graph, snaps, noConnection, 2000)).toThrowError(/leg 0/);
+  });
+
+  it('unsnapped waypoint → beeline from its raw position', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+        ],
+        [{ id: 10, nodes: [1, 2] }],
+      ),
+    );
+    const snaps = [{ wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 }, null];
+    const result = planRoute(graph, snaps, noConnection, 2000, {
+      allowBeelines: true,
+      positions: [
+        [8.0, 47.0],
+        [8.002, 47.0002], // raw tap position far from any way
+      ],
+    });
+    expect(result.hasBeelines).toBe(true);
+    // the beeline covers the raw distance between tap and snapped wp1
+    expect(result.kmBeeline).toBeGreaterThan(0.1);
+  });
+
+  it('mixed route: beeline + real legs keep their own stats', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+          [3, 47.001, 8.0],
+          [4, 47.001, 8.001],
+        ],
+        [
+          { id: 10, nodes: [1, 2] },
+          { id: 20, nodes: [2, 4] },
+        ],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      null,
+      { wayId: 20, nodeIndex: 1, t: 1, lng: 8.001, lat: 47.001, distanceM: 0 },
+    ];
+    const result = planRoute(graph, snaps, noConnection, 2000, {
+      allowBeelines: true,
+      positions: [
+        [8.0, 47.0],
+        [8.002, 47.0002],
+        [8.001, 47.001],
+      ],
+    });
+    // leg 0: real path (wp1 → wp2 crosses the connected component);
+    // wait — wp2 is unsnapped → beeline; wp3 snaps onto way 20
+    expect(result.hasBeelines).toBe(true);
+    expect(result.legs.length).toBe(2);
   });
 });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 /**
  * E4 difficulty preference tests: live reroute without corridor refetch,
- * hard-limit exclusions surfacing as a routing error, and preset recovery.
+ * hard-limit exclusions surfacing as a beeline fallback, and preset recovery.
  */
 const fixture = readFileSync(
   join(import.meta.dirname, '..', 'fixtures', 'overpass-corridor.json'),
@@ -83,36 +83,50 @@ test('settings changes reroute live without refetching the corridor', async ({ p
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
 });
 
-test('hard limit: excluding S2+ downhill blocks the route and surfaces the error', async ({
+test('hard limit: excluding S2+ downhill falls back to a beeline connection', async ({
   page,
   context,
 }) => {
   await setupWithRoute(page, context);
 
   // downhill MTB max 3 → 0: the S2 singletrail (waypoint 2 sits on it) is
-  // excluded for through-travel → no route → widening → deterministic error
+  // excluded for through-travel → the leg cannot be routed → the engine
+  // connects the waypoints with a beeline (dashed amber) instead
   const downhillMax = page.getByRole('slider', { name: 'Downhill MTB scale · maximum' });
   await downhillMax.fill('0');
-  await expect(page.getByTestId('route-error')).toContainText('No route found', {
-    timeout: 30_000,
+  // the beeline fallback keeps the route usable — stats on the Route tab
+  await page.getByRole('button', { name: 'Route', exact: true }).click();
+  await expect(page.getByTestId('route-stats')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('difficulty-breakdown')).toContainText('Beeline', {
+    timeout: 10_000,
   });
+  await expect(page.getByTestId('route-error')).toHaveCount(0);
 });
 
-test('applying a preset recovers from a blocked route', async ({ page, context }) => {
+test('applying a preset restores the real route from the beeline fallback', async ({
+  page,
+  context,
+}) => {
   test.setTimeout(60_000);
   await setupWithRoute(page, context);
 
+  // downhill MTB max 3 → 0: the S2 singletrail is excluded → beeline fallback
   await page.getByRole('slider', { name: 'Downhill MTB scale · maximum' }).fill('0');
-  await expect(page.getByTestId('route-error')).toBeVisible({ timeout: 30_000 });
-
-  // all-mountain preset restores the default bands → route returns
-  await page.getByRole('button', { name: 'All-mountain' }).click();
-  await expect(page.getByTestId('route-error')).toHaveCount(0, { timeout: 15_000 });
-  // stats live on the Route tab; slider handles on the Difficulty tab
   await page.getByRole('button', { name: 'Route', exact: true }).click();
-  await expect(page.getByTestId('route-stats')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('difficulty-breakdown')).toContainText('Beeline', {
+    timeout: 30_000,
+  });
+
+  // all-mountain preset restores the default bands → real route returns
   await page.getByRole('button', { name: 'Difficulty' }).click();
+  await page.getByRole('button', { name: 'All-mountain' }).click();
+  await page.getByRole('button', { name: 'Route', exact: true }).click();
+  await expect(page.getByTestId('difficulty-breakdown')).not.toContainText('Beeline', {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('route-error')).toHaveCount(0);
   // the preset also resets both handles
+  await page.getByRole('button', { name: 'Difficulty' }).click();
   await expect(page.getByRole('slider', { name: 'Downhill MTB scale · maximum' })).toHaveValue('3');
 });
 

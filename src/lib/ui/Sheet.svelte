@@ -251,6 +251,15 @@
                       {i18n.m.breakdown_walking()}: {formatKm((route.kmWalking ?? 0) * 1000)}
                     </span>
                   {/if}
+                  {#if (route.kmBeeline ?? 0) > 0}
+                    <span class="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                      <span
+                        class="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-amber-500"
+                        aria-hidden="true"
+                      ></span>
+                      {i18n.m.breakdown_beeline()}: {formatKm((route.kmBeeline ?? 0) * 1000)}
+                    </span>
+                  {/if}
                 </div>
                 {#if route.elevationAvailable && (route.total.maxSlope ?? 0) > 0}
                   <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">

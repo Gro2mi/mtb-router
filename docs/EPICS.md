@@ -160,6 +160,15 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 > 2→5→10 km widening loop; single-waypoint plans deliberately skip widening), `src/engine/host.ts`.
 > UI: route drawn as a basic cased line (`routeLayer.ts`, styling in E5), drawer Route tab shows
 > distance/ascent/time, status pill gained elevation + widening + per-error-code messages.
+>
+> **Beeline fallback (2026-11-07, user request):** when a leg cannot be routed (waypoint off the
+> road network or difficulty bands exclude everything), the engine now connects the waypoints with
+> a straight **beeline** segment (dashed amber line, walking-pace 8 km/h time estimate) instead of
+> failing the whole plan. Strict attempts (widening loop, no beelines) run first; the final
+> attempt allows beelines. `RouteResult` gained `kmBeeline` + `hasBeelines`; the Route tab shows a
+> "Beeline" row in the difficulty breakdown and the map draws the dashed segment (clickable popup).
+> Regression fixtures in `tests/unit/calibration.test.ts` (disconnected graph, unsnapped waypoint,
+> mixed route); e2e in `tests/e2e/difficulty.spec.ts` (hard-limit fallback, preset recovery).
 > E2's main-thread corridor/snap orchestration was replaced by the worker; snap probes are now
 > async round-trips (`layer.onProbeResult`). Also: `parseStage` exported for tests, gesture
 > classifier now classifies long holds at pointerup (interval ticks can be delayed under load —
