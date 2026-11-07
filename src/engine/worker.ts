@@ -72,7 +72,9 @@ async function loadBundle(
       abort?.signal,
     );
     if (my !== token) return null;
-    await putCachedCorridor(key, {
+    // fire-and-forget: a multi-MB IDB write must not delay snapping/routing
+    // (the session tile cache keeps the corridor warm either way)
+    void putCachedCorridor(key, {
       createdAt: Date.now(),
       nodes: [...bundle.nodes.entries()].map(([id, [lat, lng]]) => [id, lat, lng]),
       ways: bundle.ways,

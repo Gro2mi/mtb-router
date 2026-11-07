@@ -41,6 +41,7 @@ export function getTileBaseUrl(): string | null {
 
 export function setTileBaseUrl(url: string): void {
   resolvedBase = undefined; // re-resolve on the next corridor (override may have changed)
+  clearSessionTileCaches(); // a new host invalidates cached tiles/tombstones
   try {
     const normalized = url.trim().replace(/\/+$/, '');
     if (normalized === '') localStorage.removeItem(TILE_BASE_KEY);
@@ -113,9 +114,25 @@ export async function resolveTileBaseUrl(signal?: AbortSignal): Promise<string |
   return null;
 }
 
-/** test hook: forget the session resolution */
+/** test hook: forget the session resolution and all session caches */
 export function resetTileResolution(): void {
   resolvedBase = undefined;
+  clearSessionTileCaches();
+}
+
+/**
+ * Session caches (per worker instance): parsed tiles, 404 tombstones and the
+ * validated manifest. Growing a polyline only fetches the newly-covered
+ * tiles, and repeated corridors skip parsing entirely.
+ */
+const sessionTiles = new Map<string, unknown>();
+const sessionMissing = new Set<string>();
+let sessionManifest: TileManifest | null | undefined = undefined;
+
+function clearSessionTileCaches(): void {
+  sessionTiles.clear();
+  sessionMissing.clear();
+  sessionManifest = undefined;
 }
 
 export interface TileRange {
@@ -274,13 +291,20 @@ export async function fetchCorridorViaTiles(
   if (!range) return { status: 'region-miss' };
 
   try {
-    const manifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
-    if (manifest.formatVersion !== TILE_FORMAT_VERSION || manifest.tileDeg !== TILE_DEG) {
+    if (sessionManifest === undefined) {
+      sessionManifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
+    }
+    const manifest = sessionManifest;
+    if (
+      manifest === null ||
+      manifest.formatVersion !== TILE_FORMAT_VERSION ||
+      manifest.tileDeg !== TILE_DEG
+    ) {
       // silently falling through here would send the user into the slow
       // Overpass/OSM-API chain without any hint why
       console.warn(
         '[tiles] tile build format is v' +
-          manifest.formatVersion +
+          (manifest?.formatVersion ?? '?') +
           ', expected v' +
           TILE_FORMAT_VERSION +
           ' — rebuild the tiles or update the app',
@@ -296,11 +320,25 @@ export async function fetchCorridorViaTiles(
     const workers = Array.from({ length: Math.min(CONCURRENCY, keys.length) }, async () => {
       while (index < keys.length) {
         const key = keys[index++]!;
+        // session cache: parsed tiles and known-missing tiles are reused
+        // across corridors, so growing a polyline only fetches new tiles
+        const cached = sessionTiles.get(key);
+        if (cached !== undefined) {
+          parseTileJson(cached, bundle, mergeCtx);
+          continue;
+        }
+        if (sessionMissing.has(key)) {
+          misses++;
+          continue;
+        }
         try {
-          parseTileJson(await fetchJson(`${base}/${key}.json`, signal), bundle, mergeCtx);
+          const json = await fetchJson(`${base}/${key}.json`, signal);
+          sessionTiles.set(key, json);
+          parseTileJson(json, bundle, mergeCtx);
         } catch (err) {
           // empty tile — the builder never writes tiles without ways
           if (err instanceof TileHttpError && err.status === 404) {
+            sessionMissing.add(key);
             misses++;
             continue;
           }

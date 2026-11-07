@@ -392,3 +392,25 @@ tiles into `dist/tiles/` → upload one folder; auto-discovery layout notes, ver
 **E2E hermeticity:** tests that expect the public-chain fixture now block the local tile build
 (`dist/tiles` is served by `vite preview` and auto-discovered — tests were accidentally running
 against real Austrian data, where the fixture clicks fall in Lake Constance). 187 unit + 29 e2e.
+
+---
+
+## Localhost loading-speed fix (2026-11-07, "slow even on localhost")
+
+**Diagnosis:** the user's Austria build in `dist/tiles` is 1171 tiles / 800 MB / largest tile
+7.9 MB (dense Alpine city tiles). Every waypoint tap changed the corridor key, so overlapping
+tiles were re-downloaded, re-parsed and re-merged on **every** plan, and each plan also awaited
+a multi-MB IndexedDB corridor-cache write before snapping/routing could start.
+
+**Fixes:**
+- worker **session tile cache**: parsed tiles, 404 tombstones and the validated manifest are
+  cached per session — growing a polyline only fetches the newly-covered tiles; repeated
+  corridors skip parsing entirely;
+- the IDB corridor-cache write is **fire-and-forget** (off the critical path — snapping/routing
+  start while the write completes);
+- Overpass `parseStage` way-dedupe O(n²) → Set;
+- elevation hang-guard 10 s → 6 s.
+
+**Testing:** new unit test "reuses session-cached tiles when the corridor grows" (a second,
+further waypoint fetches only the new tiles). `setTileBaseUrl` clears the session caches on host
+changes; `resetTileResolution` clears them for tests. 188 unit + 27 e2e green.

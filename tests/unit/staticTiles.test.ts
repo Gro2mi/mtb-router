@@ -199,6 +199,48 @@ describe('fetchCorridorViaTiles provider', () => {
     }
   });
 
+  it('reuses session-cached tiles when the corridor grows', async () => {
+    resetTileResolution();
+    const { tiles } = await buildBundleFromFixtureXml();
+    const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const key = String(url).split('/').pop()!.replace('.json', '');
+      if (String(url).endsWith('manifest.json')) {
+        return new Response(JSON.stringify(manifest));
+      }
+      const tile = tiles.get(key);
+      if (!tile) return new Response('nf', { status: 404 });
+      return new Response(JSON.stringify(tile));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    setTileBaseUrl('https://tiles.example/growth/');
+
+    try {
+      const r1 = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
+      if (r1?.status !== 'ok') throw new Error('expected ok');
+      const count1 = fetchMock.mock.calls.length;
+
+      // grow the corridor: a second waypoint one tile to the east
+      const r2 = await fetchCorridorViaTiles(
+        [
+          [8.002, 47.0002],
+          [8.25, 47.0002],
+        ],
+        2000,
+      );
+      const count2 = fetchMock.mock.calls.length;
+
+      expect(count2).toBeGreaterThan(count1); // fetched the new tiles
+      expect(count2 - count1).toBeLessThan(10); // but NOT the whole corridor again
+      if (r2?.status !== 'ok') throw new Error('expected ok');
+      expect(r2.bundle.ways.length).toBeGreaterThanOrEqual(
+        r1.status === 'ok' ? r1.bundle.ways.length : 0,
+      );
+    } finally {
+      setTileBaseUrl('');
+    }
+  });
+
   it('reports not-configured when no URL is set', async () => {
     setTileBaseUrl('');
     expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('not-configured');

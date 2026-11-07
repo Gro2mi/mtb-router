@@ -20,6 +20,8 @@ export interface ParsedWay {
 export interface WaysBundle {
   nodes: Map<number, [number, number]>;
   ways: ParsedWay[];
+  /** optional dedupe index (set by parseStage) */
+  wayIds?: Set<number>;
 }
 
 /** Public mirrors, tried in order (PLAN §8 etiquette: one corridor per action). */
@@ -142,6 +144,7 @@ interface OverpassElement {
 }
 
 export function parseStage(json: unknown, bundle: WaysBundle): void {
+  if (!bundle.wayIds) bundle.wayIds = new Set<number>();
   const elements = (json as { elements?: OverpassElement[] }).elements;
   if (!Array.isArray(elements)) throw new Error('unexpected Overpass response (no elements)');
   if (elements.length > MAX_ELEMENTS) throw new Error('corridor response too large');
@@ -155,7 +158,8 @@ export function parseStage(json: unknown, bundle: WaysBundle): void {
     if (el.type !== 'way') continue;
     if (!Array.isArray(el.nodes) || el.nodes.length < 2) continue;
     // defensive: stages/mirrors could theoretically overlap
-    if (bundle.ways.some((w) => w.id === el.id)) continue;
+    if (bundle.wayIds.has(el.id)) continue;
+    bundle.wayIds.add(el.id);
     const attrs = parseWayTags(el.tags);
     if (!isRoutable(attrs)) continue;
     bundle.ways.push({ id: el.id, nodeIds: el.nodes.slice(), attrs });

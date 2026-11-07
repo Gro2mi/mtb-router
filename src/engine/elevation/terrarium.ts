@@ -101,7 +101,7 @@ export async function loadElevations(
   nodeLng: Float64Array,
   nodeLat: Float64Array,
   signal?: AbortSignal,
-  timeoutMs = 10_000,
+  timeoutMs = 6_000,
 ): Promise<Float32Array | null> {
   if (degraded) return null;
   try {
