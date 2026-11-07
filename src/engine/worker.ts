@@ -111,6 +111,12 @@ async function attempt(
   post({ id, type: 'progress', stage: 4 });
   if (graph) {
     graph.nodeEle = await loadElevations(graph.nodeLng, graph.nodeLat, abort?.signal);
+    if (graph.nodeEle) {
+      // per-segment elevation delta — drives slope + climb-direction costs
+      for (const seg of graph.segments) {
+        seg.dz = graph.nodeEle[seg.v]! - graph.nodeEle[seg.u]!;
+      }
+    }
   }
   if (my !== token) return 'ok';
 

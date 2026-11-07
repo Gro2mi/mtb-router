@@ -101,7 +101,7 @@ export async function loadElevations(
   nodeLng: Float64Array,
   nodeLat: Float64Array,
   signal?: AbortSignal,
-  timeoutMs = 6_000,
+  timeoutMs = 10_000,
 ): Promise<Float32Array | null> {
   if (degraded) return null;
   try {
@@ -124,7 +124,10 @@ export async function loadElevations(
       elevations[i] = sampleTile(tiles.get(`${t.x}/${t.y}`)!, t.x, t.y, gx, gy);
     }
     return elevations;
-  } catch {
+  } catch (err) {
+    // a superseded plan aborts the in-flight fetch — that is NOT a network
+    // problem and must not poison the session-wide degradation memo
+    if (err instanceof DOMException && err.name === 'AbortError') return null;
     degraded = true; // blocked/black-holed — don't re-burn the timeout per attempt
     return null; // degraded mode
   }

@@ -76,6 +76,12 @@ export interface RouteSegment {
   ascentM: number;
   descentM: number;
   timeS: number;
+  /** effective MTB difficulty in travel direction, rounded 0..6 (E5 coloring) */
+  difficulty?: number;
+  /** walking-only edge (footway / bicycle=no → portage) */
+  walking?: boolean;
+  /** |Δz| / length of the underlying way segment (E5.2 max slope) */
+  slope?: number;
 }
 
 export interface RouteLeg {
@@ -88,9 +94,18 @@ export interface RouteLeg {
 
 export interface RouteResult {
   legs: RouteLeg[];
-  total: { distanceM: number; ascentM: number; descentM: number; timeS: number };
-  /** km per downhill-effective MTB difficulty, index 0..6 */
+  total: {
+    distanceM: number;
+    ascentM: number;
+    descentM: number;
+    timeS: number;
+    /** steepest |Δz|/len over all way segments (E5.2) */
+    maxSlope?: number;
+  };
+  /** km per effective MTB difficulty in travel direction, index 0..6 */
   kmByMtb: number[];
+  /** km on walking-only (portage) edges, excluded from kmByMtb (E5.2) */
+  kmWalking?: number;
   /** corridor radius that produced this route (widening result) */
   radiusM: number;
   elevationAvailable: boolean;

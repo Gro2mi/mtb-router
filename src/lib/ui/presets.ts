@@ -62,6 +62,25 @@ export function matchPreset(settings: RiderSettings): PresetId {
   return found ? found.id : 'custom';
 }
 
+/** A user-saved preset (E4.2). */
+export interface CustomPreset {
+  id: string;
+  name: string;
+  settings: RiderSettings;
+}
+
+/** id of the custom preset matching the settings, or null. */
+export function matchCustomId(settings: RiderSettings, customs: CustomPreset[]): string | null {
+  const found = customs.find(
+    (p) =>
+      sameBand(p.settings.uphill, settings.uphill) &&
+      sameBand(p.settings.downhill, settings.downhill) &&
+      Math.abs(p.settings.forestRoadPreference - settings.forestRoadPreference) < 0.01 &&
+      p.settings.avoidUntaggedSingletrail === settings.avoidUntaggedSingletrail,
+  );
+  return found ? found.id : null;
+}
+
 /** Clamp a band so min ≤ max within [lo, hi]. */
 export function clampBand(
   value: number,

@@ -7,6 +7,7 @@
   import { i18n } from './lib/i18n.svelte';
   import { toast } from './lib/state/toast.svelte';
   import { planning } from './lib/state/planning.svelte';
+  import { profileState } from './lib/state/profile.svelte';
   import { waypoints } from './lib/waypoints/store.svelte';
   import Sheet from './lib/ui/Sheet.svelte';
   import Toast from './lib/ui/Toast.svelte';
@@ -128,6 +129,19 @@
   // --- route rendering -----------------------------------------------------
   $effect(() => {
     routeLayer?.setRoute(planning.route);
+  });
+
+  // --- zoom-to-fit on freshly computed routes (E5.1) -----------------------
+  $effect(() => {
+    void planning.routeVersion;
+    const route = planning.route;
+    if (route) routeLayer?.fitToRoute(route);
+  });
+
+  // --- profile scrub ↔ map marker (E5.3) -----------------------------------
+  $effect(() => {
+    const scrub = profileState.scrub;
+    routeLayer?.setScrubPoint(scrub ? [scrub.lng, scrub.lat] : null);
   });
 </script>
 

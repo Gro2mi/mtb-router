@@ -201,7 +201,28 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 
 ---
 
-## E5 — Route display, stats & elevation profile · L · M2 · deps: E3 (full value with E4)
+## E5 — Route display, stats & elevation profile · L · M2 · deps: E3 (full value with E4) · **done (2026-11-07)**
+
+> **Implementation notes (2026-11-07):** (5.1) per-segment colored rendering: RouteSegment gained
+> `difficulty` (effective MTB level in travel direction, computed in buildSegment from dirDz with a
+> 0.5 m climb threshold), `walking`, `slope` — all optional (legacy stored routes render with a
+> max(scale) fallback); routeLayer rewritten as data-driven `line-color: ['get','color']` features
+> plus a separate dashed gray layer for walking edges (line-dasharray is not data-driven);
+> zoom-to-fit on worker routes only (routeVersion counter), reduced-motion respected.
+> (5.2) segment popup on line click (class/surface/MTB S-level tagged-vs-estimated/walking note)
+> + difficulty-split chips + walking km + max slope in the Route tab. (5.3) canvas elevation
+> profile colored per segment, pointer scrub ↔ map marker two-way sync
+> (`src/lib/profile/profileData.ts` pure builder, `profileState` in
+> `src/lib/state/profile.svelte.ts`), highlight band from segment clicks.
+> **Bugs found:** (a) worker never computed `seg.dz` after elevation attach (masked by manual test
+> setup) — fixed in the worker pipeline; (b) **elevation abort poisoning**: a superseded plan's
+> AbortError marked the whole session degraded — fixed to ignore AbortError, timeout raised to 10 s;
+> (c) **maplibre v6 Marker._update runs inside addTo** and reads the unset lngLat — the throw lands
+> AFTER appendChild, so `setLngLat` must be called BEFORE `addTo` (six orphaned scrub markers were
+> the symptom); (d) the worker route can beat the map 'load' event, so e2e must poll for layers.
+> Tests: e5 unit suite (colors, profile builder incl. joint dedupe + interpolation, degraded flag),
+> 5 e2e (colors/walk layer, profile scrub → map dot, segment popup via projected click, legend +
+> breakdown, custom presets). 176 unit + 26 e2e green.
 
 **Goal:** Present the route so the rider can judge it — line, numbers, profile.
 
@@ -236,12 +257,18 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 > Load flow: restore settings (no reroute) → waypoints.restore() (App effect replans; corridor is
 > IDB-cached) → saved geometry seeded for instant display → viewport flyTo.
 > **Bug class worth remembering (3rd occurrence):** reactive `$state` proxies cross every
-> serialization boundary — `structuredClone(proxy)` throws DataCloneError, and here it was *silently
-> swallowed* by the IDB put's best-effort catch (save + rename both no-oped). Fixes:
+> serialization boundary — `structuredClone(proxy)` throws DataCloneError, and here it was _silently
+> swallowed_ by the IDB put's best-effort catch (save + rename both no-oped). Fixes:
 > `$state.snapshot()` in saveCurrent and a JSON deep-clone inside the IDB put boundary. Also: Svelte
 > bind:value sets properties, not attributes — `input[value=…]` CSS doesn't match in Playwright.
 > E2E: save→reload→load (stats + snapped waypoints restored), GPX download content assertions,
-> rename/delete. 159 unit + 20 e2e green. Custom preset management from E4.2 remains open.
+> rename/delete. 159 unit + 20 e2e green.
+>
+> **E4.2 custom presets (2026-11-07, leftover):** save/rename(delete)-current-settings as named
+> presets — `matchCustomId` in presets.ts, `customPresets.svelte.ts` (localStorage), chips with
+> per-preset ✕ in the Difficulty panel, active state via exact-settings match. Fourth instance of
+> the proxy lesson: `applyCustom` structured-cloned a deep proxy from the presets list —
+> `$state.snapshot` before apply; the IDB put deep-clones defensively.
 
 **Goal:** Routes survive reload and ride on a bike computer.
 

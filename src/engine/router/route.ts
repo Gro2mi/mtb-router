@@ -114,6 +114,12 @@ function buildSegment(graph: Graph, costs: SegmentCosts, hop: Hop): RouteSegment
     [hop.fromLat, hop.fromLng, hop.fromEle],
     [hop.toLat, hop.toLng, hop.toEle],
   ];
+  // effective difficulty in travel direction (E5 coloring): climbing uses the
+  // uphill scale, flat/descending the downhill scale; 0.5 m threshold avoids
+  // ele noise flipping the direction on near-flat trails
+  const climbing = dirDz > 0.5;
+  const difficulty = Math.max(0, Math.min(6, Math.round(climbing ? eff.mtbUp : eff.mtbDown)));
+  const slope = seg.lenM > 0 ? Math.abs(dzTotal) / seg.lenM : 0;
   return {
     wayId: graph.wayIds[seg.wayIdx]!,
     highway: attrs.highway,
@@ -127,6 +133,9 @@ function buildSegment(graph: Graph, costs: SegmentCosts, hop: Hop): RouteSegment
     ascentM: ascent,
     descentM: descent,
     timeS: cost * hop.portion,
+    difficulty,
+    walking: attrs.walkingOnly === true,
+    slope,
   };
 }
 
@@ -163,14 +172,17 @@ export function planRoute(
   }
 
   const kmByMtb = new Array(7).fill(0) as number[];
+  let kmWalking = 0;
+  let maxSlope = 0;
   for (const leg of legs) {
     for (const seg of leg.segments) {
-      const eleA = seg.coords[0]?.[2];
-      const eleB = seg.coords[1]?.[2];
-      const uphill =
-        eleA !== null && eleA !== undefined && eleB !== null && eleB !== undefined && eleB > eleA;
-      const level = Math.max(0, Math.min(6, Math.round(uphill ? seg.mtbUp : seg.mtbDown)));
-      kmByMtb[level]! += seg.distanceM / 1000;
+      if (seg.walking === true) {
+        kmWalking += seg.distanceM / 1000;
+      } else {
+        const level = Math.max(0, Math.min(6, seg.difficulty ?? Math.round(seg.mtbDown)));
+        kmByMtb[level]! += seg.distanceM / 1000;
+      }
+      maxSlope = Math.max(maxSlope, seg.slope ?? 0);
     }
   }
 
@@ -181,8 +193,10 @@ export function planRoute(
       ascentM: legs.reduce((s, l) => s + l.ascentM, 0),
       descentM: legs.reduce((s, l) => s + l.descentM, 0),
       timeS: legs.reduce((s, l) => s + l.timeS, 0),
+      maxSlope: Math.round(maxSlope * 100) / 100,
     },
     kmByMtb: kmByMtb.map((km) => Math.round(km * 10) / 10),
+    kmWalking: Math.round(kmWalking * 10) / 10,
     radiusM,
     elevationAvailable: graph.nodeEle !== null,
   };

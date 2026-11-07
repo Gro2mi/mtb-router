@@ -63,9 +63,12 @@ class RouteLibrary {
     try {
       const stored = (await getRoute(id)) ?? this.routes.find((r) => r.id === id);
       if (!stored) return;
-      planning.restoreSettings(stored.settings);
-      waypoints.restore(storedToWaypoints(stored));
-      planning.route = stored.route ? structuredClone(stored.route) : null;
+      // snapshot: the list fallback hands out deep proxies (structuredClone
+      // would throw on them); restoreSettings/restore already deep-copy
+      const plain = $state.snapshot(stored) as StoredRoute;
+      planning.restoreSettings(plain.settings);
+      waypoints.restore(storedToWaypoints(plain));
+      planning.route = plain.route ? structuredClone(plain.route) : null;
       planning.phase = 'ready';
       planning.errorCode = null;
       if (stored.viewport) flyToViewport(stored.viewport);

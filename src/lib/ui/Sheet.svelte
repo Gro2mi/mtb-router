@@ -3,6 +3,9 @@
   import LocaleSwitcher from './LocaleSwitcher.svelte';
   import Difficulty from './Difficulty.svelte';
   import RoutesTab from './RoutesTab.svelte';
+  import RouteLegend from './RouteLegend.svelte';
+  import ElevationProfile from './ElevationProfile.svelte';
+  import { difficultyColor, WALKING_COLOR } from '../map/difficultyColors';
   import { planning, SNAP_RADIUS_CHOICES } from '../state/planning.svelte';
   import { waypoints } from '../waypoints/store.svelte';
   import { getTileBaseUrl, setTileBaseUrl } from '../osm/staticTiles';
@@ -222,6 +225,48 @@
                   </div>
                 </div>
               </div>
+
+              <!-- difficulty split + max slope (E5.2) -->
+              <div class="mt-3" data-testid="difficulty-breakdown">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">
+                  {#each route.kmByMtb as km, level (level)}
+                    {#if km > 0}
+                      <span class="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                        <span
+                          class="inline-block h-3 w-3 rounded-sm"
+                          style={`background: ${difficultyColor(level)}`}
+                          aria-hidden="true"
+                        ></span>
+                        S{level}: {formatKm(km * 1000)}
+                      </span>
+                    {/if}
+                  {/each}
+                  {#if (route.kmWalking ?? 0) > 0}
+                    <span class="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                      <span
+                        class="inline-block h-3 w-3 rounded-sm"
+                        style={`background: ${WALKING_COLOR}`}
+                        aria-hidden="true"
+                      ></span>
+                      {i18n.m.breakdown_walking()}: {formatKm((route.kmWalking ?? 0) * 1000)}
+                    </span>
+                  {/if}
+                </div>
+                {#if route.elevationAvailable && (route.total.maxSlope ?? 0) > 0}
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {i18n.m.max_slope()}: {Math.round((route.total.maxSlope ?? 0) * 100)} %
+                  </p>
+                {/if}
+              </div>
+
+              <RouteLegend />
+              {#if route.elevationAvailable}
+                <ElevationProfile {route} />
+              {:else}
+                <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  {i18n.m.profile_degraded()}
+                </p>
+              {/if}
             {:else}
               <p class="mt-4 font-bold" data-testid="route-empty">{i18n.m.stats_empty()}</p>
               <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">

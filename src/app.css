@@ -251,6 +251,32 @@ body {
   outline-offset: 2px;
 }
 
+/* elevation-profile scrub marker (E5.3) */
+.mtbr-profile-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #ea580c;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.5);
+  pointer-events: none;
+}
+
+/* segment popup walk note (E5.2) */
+.mtbr-segment-popup p {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #0f172a;
+}
+.mtbr-segment-popup p:last-child {
+  margin-bottom: 0;
+}
+.mtbr-popup-walk {
+  color: #6b7280;
+  font-weight: 600;
+}
+
 /* corridor loading spinner (E2.3) */
 .mtbr-spinner {
   width: 12px;

@@ -7,11 +7,13 @@
   import { planning } from '../state/planning.svelte';
   import { i18n } from '../i18n.svelte';
   import RangeSlider from './RangeSlider.svelte';
-  import { PRESETS, matchPreset, type PresetId } from './presets';
+  import { PRESETS, matchPreset, matchCustomId, type PresetId } from './presets';
+  import { customPresets } from '../state/customPresets.svelte';
   import type { DifficultyBands, RiderSettings } from '../../engine/protocol';
 
   const settings = $derived(planning.settings);
-  const activePreset = $derived(matchPreset(settings));
+  const activeCustomId = $derived(matchCustomId(settings, customPresets.list));
+  const activePreset = $derived(activeCustomId ?? matchPreset(settings));
 
   const FOREST_STEPS = [0, 1 / 3, 2 / 3, 1] as const;
   const forestLabels = [
@@ -52,6 +54,22 @@
   const forestStep = $derived(
     FOREST_STEPS.findIndex((v) => Math.abs(v - settings.forestRoadPreference) < 0.17),
   );
+
+  // custom preset management (E4.2)
+  let savingPreset = $state(false);
+  let presetName = $state('');
+
+  function saveCurrentPreset(): void {
+    customPresets.add(presetName, planning.settings);
+    presetName = '';
+    savingPreset = false;
+  }
+
+  function applyCustom(id: string): void {
+    const preset = customPresets.list.find((p) => p.id === id);
+    // $state.snapshot: list items are deep proxies — structuredClone throws on them
+    if (preset) apply($state.snapshot(preset.settings));
+  }
 </script>
 
 <div class="space-y-5" data-testid="difficulty-panel">
@@ -76,7 +94,78 @@
         </button>
       {/each}
     </div>
-    {#if activePreset === 'custom'}
+
+    <!-- custom presets (E4.2) -->
+    {#if customPresets.list.length > 0 || savingPreset}
+      <div class="mt-1.5 flex flex-wrap gap-1.5">
+        {#each customPresets.list as preset (preset.id)}
+          <span
+            class="flex items-center overflow-hidden rounded-lg border-2 {activeCustomId ===
+            preset.id
+              ? 'border-orange-600'
+              : 'border-slate-300 dark:border-slate-500'}"
+          >
+            <button
+              type="button"
+              class="h-11 px-2.5 text-xs font-bold transition-colors {activeCustomId === preset.id
+                ? 'bg-orange-600 text-white'
+                : 'bg-white text-slate-700 hover:text-orange-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-orange-400'}"
+              aria-pressed={activeCustomId === preset.id}
+              onclick={() => applyCustom(preset.id)}
+            >
+              {preset.name}
+            </button>
+            <button
+              type="button"
+              class="h-11 w-8 bg-white text-sm text-slate-500 hover:bg-red-50 hover:text-red-700 dark:bg-slate-900 dark:text-slate-400"
+              aria-label={i18n.m.preset_delete({ name: preset.name })}
+              title={i18n.m.preset_delete({ name: preset.name })}
+              onclick={() => customPresets.remove(preset.id)}
+            >
+              ✕
+            </button>
+          </span>
+        {/each}
+        {#if !savingPreset}
+          <button
+            type="button"
+            class="h-11 rounded-lg border-2 border-dashed border-slate-400 bg-white px-2.5 text-xs font-bold text-slate-700 hover:border-orange-600 hover:text-orange-700 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-300"
+            onclick={() => (savingPreset = true)}
+          >
+            + {i18n.m.preset_add()}
+          </button>
+        {:else}
+          <span class="flex flex-1 items-center gap-1.5">
+            <input
+              type="text"
+              class="h-11 min-w-0 flex-1 rounded-lg border-2 border-orange-600 bg-white px-2 text-xs text-slate-900 dark:bg-slate-900 dark:text-white"
+              placeholder={i18n.m.preset_name_placeholder()}
+              bind:value={presetName}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') saveCurrentPreset();
+                if (e.key === 'Escape') savingPreset = false;
+              }}
+            />
+            <button
+              type="button"
+              class="h-11 shrink-0 rounded-lg border-2 border-orange-700 bg-orange-600 px-2.5 text-xs font-bold text-white"
+              onclick={saveCurrentPreset}
+            >
+              {i18n.m.preset_add_confirm()}
+            </button>
+          </span>
+        {/if}
+      </div>
+    {:else}
+      <button
+        type="button"
+        class="mt-1.5 h-11 rounded-lg border-2 border-dashed border-slate-400 bg-white px-3 text-xs font-bold text-slate-700 hover:border-orange-600 hover:text-orange-700 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-300"
+        onclick={() => (savingPreset = true)}
+      >
+        + {i18n.m.preset_add()}
+      </button>
+    {/if}
+    {#if activeCustomId === null && activePreset === 'custom'}
       <p class="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
         {i18n.m.preset_custom()}
       </p>

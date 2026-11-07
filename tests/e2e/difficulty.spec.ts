@@ -118,3 +118,42 @@ test('forest-road preference and untagged toggle re-route without refetch', asyn
     'false',
   );
 });
+
+test('custom presets: save, apply, survive reload, delete', async ({ page }) => {
+  await setupWithRoute(page);
+
+  // tweak settings then save as a custom preset
+  await page.getByRole('button', { name: 'High' }).click();
+  await page.getByRole('button', { name: '+ Save current' }).click();
+  await page.getByPlaceholder('Preset name…').fill('Gravel tour');
+  await page.getByPlaceholder('Preset name…').press('Enter');
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  // switch away (enduro), then re-apply the custom preset
+  await page.getByRole('button', { name: 'Enduro tech' }).click();
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await page.getByRole('button', { name: 'Gravel tour', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  // survives reload
+  await page.reload();
+  await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Difficulty' }).click();
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // delete
+  await page.getByRole('button', { name: 'Delete preset Gravel tour' }).click();
+  await expect(page.getByRole('button', { name: 'Gravel tour', exact: true })).toHaveCount(0);
+});
