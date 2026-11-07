@@ -91,6 +91,13 @@ async function loadBundle(
 function buildState(bundle: WaysBundle): void {
   graph = buildGraph(bundle);
   snapIndex = new SnapIndex({ nodes: bundle.nodes, ways: graph.keptWays });
+  // memory instrumentation (E7.2, PLAN NFR-3): visible in devtools console
+  if (import.meta.env.DEV) {
+    const nodes = graph.nodeCount;
+    const segs = graph.segments.length;
+    const approxMb = ((nodes * 20 + segs * 32) / 1048576).toFixed(1);
+    console.info(`[engine] graph: ${nodes} nodes, ${segs} segments (~${approxMb} MB arrays)`);
+  }
 }
 
 /** plan pipeline for one corridor radius; returns the route or null to widen */

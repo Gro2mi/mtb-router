@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type BrowserContext } from '@playwright/test';
 
 /**
  * E5 rendering tests: difficulty-colored route, elevation profile with
@@ -51,7 +51,7 @@ async function waitForStableRoute(page: Page): Promise<void> {
 }
 
 /** serve a terrarium PNG whose elevation rises from south (500 m) to north (700 m) */
-async function mockElevation(page: Page): Promise<void> {
+async function mockElevation(page: Page, context: BrowserContext): Promise<void> {
   const pngB64 = await page.evaluate(() => {
     const c = document.createElement('canvas');
     c.width = 256;
@@ -79,7 +79,7 @@ async function mockElevation(page: Page): Promise<void> {
       }, 'image/png');
     });
   });
-  await page.route(
+  await context.route(
     '**/elevation-tiles-prod/**',
     async (route) =>
       await route.fulfill({
@@ -89,17 +89,17 @@ async function mockElevation(page: Page): Promise<void> {
   );
 }
 
-async function planRoute(page: Page): Promise<void> {
-  await page.route('**/api/interpreter*', async (route) => {
+async function planRoute(page: Page, context: BrowserContext): Promise<void> {
+  await context.route('**/api/interpreter*', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: fixture });
   });
-  await mockElevation(page);
+  await mockElevation(page, context);
   await page.addInitScript((viewport) => {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
 
   // hermetic: no tiles folder on this origin — the public chain is expected
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
     route.fulfill({ status: 404, body: 'not built' }),
   );
   await page.goto('/');
@@ -112,8 +112,8 @@ async function planRoute(page: Page): Promise<void> {
   await expect(page.getByTestId('route-stats')).toContainText(/\d+\s*m/, { timeout: 10_000 });
 }
 
-test('route renders per-segment difficulty colors', async ({ page }) => {
-  await planRoute(page);
+test('route renders per-segment difficulty colors', async ({ page, context }) => {
+  await planRoute(page, context);
 
   // the route can beat the map's 'load' event — wait for the contrast layers
   await expect
@@ -173,8 +173,8 @@ test('route renders per-segment difficulty colors', async ({ page }) => {
   expect(info.difficulties).toContain(2); // the tagged S2 singletrail
 });
 
-test('elevation profile renders and scrubs to a map marker', async ({ page }) => {
-  await planRoute(page);
+test('elevation profile renders and scrubs to a map marker', async ({ page, context }) => {
+  await planRoute(page, context);
   await waitForStableRoute(page);
 
   const profile = page.getByTestId('elevation-profile');
@@ -192,8 +192,11 @@ test('elevation profile renders and scrubs to a map marker', async ({ page }) =>
   await expect(page.locator('.mtbr-profile-dot')).toHaveCount(1, { timeout: 5_000 });
 });
 
-test('clicking the route shows a segment popup and highlights the profile', async ({ page }) => {
-  await planRoute(page);
+test('clicking the route shows a segment popup and highlights the profile', async ({
+  page,
+  context,
+}) => {
+  await planRoute(page, context);
 
   // leave plan mode: clicking the line must not add a waypoint
   await page.getByRole('button', { name: 'Planning mode' }).click();
@@ -223,8 +226,8 @@ test('clicking the route shows a segment popup and highlights the profile', asyn
   await expect(popup).toContainText(/S\d/);
 });
 
-test('legend and difficulty breakdown appear with the route', async ({ page }) => {
-  await planRoute(page);
+test('legend and difficulty breakdown appear with the route', async ({ page, context }) => {
+  await planRoute(page, context);
 
   await expect(page.getByTestId('route-legend')).toBeVisible();
   await expect(page.getByTestId('route-legend')).toContainText('S0');

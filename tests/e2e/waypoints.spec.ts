@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type BrowserContext } from '@playwright/test';
 import { buildTilesFromXml, tileToJson } from '../../scripts/build-tiles/build-tiles.mjs';
 
 /**
@@ -36,17 +36,17 @@ const TAP_PATH = { x: BASE.x, y: BASE.y - 169 }; // ~20 m south of the singletra
 const TAP_NEAR_FOOTWAY = { x: BASE.x, y: BASE.y + 253 }; // ~30 m north of the excluded footway
 
 /** elevation tiles are network-flaky in CI — abort them for fast degraded mode */
-async function abortElevation(page: Page): Promise<void> {
-  await page.route('**/elevation-tiles-prod/**', (route) => route.abort());
+async function abortElevation(context: BrowserContext): Promise<void> {
+  await context.route('**/elevation-tiles-prod/**', (route) => route.abort());
 }
 
-async function setupPage(page: Page): Promise<void> {
+async function setupPage(page: Page, context: BrowserContext): Promise<void> {
   let overpassRequests = 0;
-  await page.route('**/api/interpreter*', async (route) => {
+  await context.route('**/api/interpreter*', async (route) => {
     overpassRequests++;
     await route.fulfill({ contentType: 'application/json', body: fixture });
   });
-  await abortElevation(page);
+  await abortElevation(context);
   Object.defineProperty(page, 'overpassRequests', {
     get: () => overpassRequests,
     configurable: true,
@@ -55,7 +55,7 @@ async function setupPage(page: Page): Promise<void> {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
   // hermetic: no tiles folder on this origin — the public chain is expected
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
     route.fulfill({ status: 404, body: 'not built' }),
   );
   await page.goto('/');
@@ -80,8 +80,8 @@ function requestCount(page: Page): number {
 
 const canvas = (page: Page) => page.locator('canvas.maplibregl-canvas');
 
-test('plan mode: taps add waypoints that snap to the nearest way', async ({ page }) => {
-  await setupPage(page);
+test('plan mode: taps add waypoints that snap to the nearest way', async ({ page, context }) => {
+  await setupPage(page, context);
 
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
@@ -103,8 +103,8 @@ test('plan mode: taps add waypoints that snap to the nearest way', async ({ page
   await expect(page.getByTestId('waypoint-count')).toContainText('Waypoints: 2');
 });
 
-test('footways with bicycle=no snap as walking edges (filter v2)', async ({ page }) => {
-  await setupPage(page);
+test('footways with bicycle=no snap as walking edges (filter v2)', async ({ page, context }) => {
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   // ~30 m north of the footway — walking edges are snap targets since the
@@ -115,9 +115,9 @@ test('footways with bicycle=no snap as walking edges (filter v2)', async ({ page
   });
 });
 
-test('identical re-plan issues no new Overpass requests (cache)', async ({ page }) => {
+test('identical re-plan issues no new Overpass requests (cache)', async ({ page, context }) => {
   test.setTimeout(60_000);
-  await setupPage(page);
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   await canvas(page).click({ position: TAP_TRACK });
@@ -141,8 +141,8 @@ test('identical re-plan issues no new Overpass requests (cache)', async ({ page 
   expect(requestCount(page)).toBe(baseline);
 });
 
-test('undo/redo returns to any prior waypoint state', async ({ page }) => {
-  await setupPage(page);
+test('undo/redo returns to any prior waypoint state', async ({ page, context }) => {
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   await canvas(page).click({ position: TAP_TRACK });
@@ -159,8 +159,8 @@ test('undo/redo returns to any prior waypoint state', async ({ page }) => {
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
 });
 
-test('insert-via handle inserts a middle waypoint', async ({ page }) => {
-  await setupPage(page);
+test('insert-via handle inserts a middle waypoint', async ({ page, context }) => {
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   await canvas(page).click({ position: TAP_TRACK });
@@ -173,8 +173,8 @@ test('insert-via handle inserts a middle waypoint', async ({ page }) => {
   await expect(page.locator('.mtbr-waypoint[data-role="via"]')).toHaveCount(1);
 });
 
-test('marker popup and right-click delete waypoints', async ({ page }) => {
-  await setupPage(page);
+test('marker popup and right-click delete waypoints', async ({ page, context }) => {
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   await canvas(page).click({ position: TAP_TRACK });
@@ -191,8 +191,11 @@ test('marker popup and right-click delete waypoints', async ({ page }) => {
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(0);
 });
 
-test('route engine: two snapped waypoints produce a route with stats (E3)', async ({ page }) => {
-  await setupPage(page);
+test('route engine: two snapped waypoints produce a route with stats (E3)', async ({
+  page,
+  context,
+}) => {
+  await setupPage(page, context);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
   // waypoint on the track + waypoint on the singletrail — the fixture's
@@ -214,15 +217,16 @@ test('route engine: two snapped waypoints produce a route with stats (E3)', asyn
 
 test('falls back to the main OSM API when all Overpass mirrors are unreachable', async ({
   page,
+  context,
 }) => {
   test.setTimeout(45_000);
   // simulate dead Overpass mirrors (instant network errors) and serve the
   // corridor through api.openstreetmap.org instead
-  await page.route('**/api/interpreter*', (route) => route.abort());
-  await abortElevation(page);
+  await context.route('**/api/interpreter*', (route) => route.abort());
+  await abortElevation(context);
   // hermetic: block the local dist/tiles build so this test exercises the
   // public chain with the fixture
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
     route.fulfill({ status: 404, body: 'not built' }),
   );
   const osmApiXml = readFileSync(
@@ -230,7 +234,7 @@ test('falls back to the main OSM API when all Overpass mirrors are unreachable',
     'utf8',
   );
   let osmApiRequests = 0;
-  await page.route('**/api.openstreetmap.org/api/0.6/map*', async (route) => {
+  await context.route('**/api.openstreetmap.org/api/0.6/map*', async (route) => {
     osmApiRequests++;
     await route.fulfill({ contentType: 'text/xml', body: osmApiXml });
   });
@@ -251,6 +255,7 @@ test('falls back to the main OSM API when all Overpass mirrors are unreachable',
 
 test('self-hosted tiles serve the corridor without touching Overpass or the OSM API', async ({
   page,
+  context,
 }) => {
   // build tiles from the XML fixture with the real builder, serve them as a
   // fake static host, and count any escape attempts to public servers
@@ -261,18 +266,18 @@ test('self-hosted tiles serve the corridor without touching Overpass or the OSM 
   const { tiles } = await buildTilesFromXml(fixtureXml);
 
   let publicRequests = 0;
-  await page.route('**/api/interpreter*', (route) => {
+  await context.route('**/api/interpreter*', (route) => {
     publicRequests++;
     void route;
     return route.abort();
   });
-  await page.route('**/api.openstreetmap.org/**', (route) => {
+  await context.route('**/api.openstreetmap.org/**', (route) => {
     publicRequests++;
     void route;
     return route.abort();
   });
-  await abortElevation(page);
-  await page.route('https://tiles.test/**', async (route) => {
+  await abortElevation(context);
+  await context.route('https://tiles.test/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/manifest.json')) {
       await route.fulfill({
@@ -309,7 +314,10 @@ test('self-hosted tiles serve the corridor without touching Overpass or the OSM 
   expect(publicRequests).toBe(0);
 });
 
-test('auto-discovers a tiles folder next to the app (no URL setting)', async ({ page }) => {
+test('auto-discovers a tiles folder next to the app (no URL setting)', async ({
+  page,
+  context,
+}) => {
   const fixtureXml = readFileSync(
     join(import.meta.dirname, '..', 'fixtures', 'osm-api-map.xml'),
     'utf8',
@@ -317,16 +325,16 @@ test('auto-discovers a tiles folder next to the app (no URL setting)', async ({ 
   const { tiles } = await buildTilesFromXml(fixtureXml);
 
   let publicRequests = 0;
-  await page.route('**/api/interpreter*', (route) => {
+  await context.route('**/api/interpreter*', (route) => {
     publicRequests++;
     return route.abort();
   });
-  await page.route('**/api.openstreetmap.org/**', (route) => {
+  await context.route('**/api.openstreetmap.org/**', (route) => {
     publicRequests++;
     return route.abort();
   });
-  await page.route('**/elevation-tiles-prod/**', (route) => route.abort());
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, async (route) => {
+  await context.route('**/elevation-tiles-prod/**', (route) => route.abort());
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/manifest.json')) {
       await route.fulfill({
@@ -366,8 +374,10 @@ test('auto-discovers a tiles folder next to the app (no URL setting)', async ({ 
 test.describe('mobile: long-press adds waypoints in browse mode', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test('long-press adds a waypoint without plan mode', async ({ page }) => {
-    await setupPage(page);
+  test('long-press adds a waypoint without plan mode', async ({ page, context }) => {
+    // gesture-only test: corridor mocked but unused
+    await setupPage(page, context);
+    // north of center: lands within the snap radius of the singletrail
     // north of center: lands within the snap radius of the singletrail
     const x = 195;
     const y = 320;

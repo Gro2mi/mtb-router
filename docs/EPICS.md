@@ -465,11 +465,43 @@ enabled own-basemap mode, the pmtiles parser fetched the HTML and threw "Wrong m
 PMTiles archive", breaking every style layer → blank map.
 
 **Fixes:**
+
 - the probe now uses a **range request** (`Range: bytes=0-511`) and validates the **PMTiles magic
   number** ("PM", the same check the pmtiles library performs). This kills the SPA-fallback false
-  positive *and* doubles as a range-support check — a server that ignores ranges (200 for the
+  positive _and_ doubles as a range-support check — a server that ignores ranges (200 for the
   whole file) is rejected, since PMTiles requires byte serving;
 - hardening: if a present-but-corrupt archive still fails at runtime, the map reverts to the
   hosted style once instead of staying broken.
 - 7 new probe unit tests (magic validation, SPA fallback, no-range server, 404, network error,
   range-header assertion). 211 unit + 28 e2e green.
+
+---
+
+## E7 — Hardening & polish · done (2026-11-07)
+
+> **Implementation notes:** (7.1) PWA via a hand-rolled service worker (`public/sw.js`) +
+> `manifest.webmanifest` + generated PNG icons (`scripts/generate-icons.mjs`, dependency-free PNG
+> writer). Strategies: hashed build assets + vendor → cache-first (immutable); navigations →
+> network-first with offline shell fallback; map data (own `/tiles/`, OpenFreeMap basemap,
+> elevation, glyphs) → cache-first with a generous cap, filled by page **and** engine-worker
+> requests (visited regions survive offline); Overpass POSTs and Range requests never cached.
+> Playwright note: SWs are blocked by default in tests — `pwa.spec.ts` opts in with
+> `test.use({ serviceWorkers: 'allow' })` and asserts manifest/icons/activation + an offline
+> reload (3-load flow: install → controlled load warms caches → offline reload boots the shell).
+> (7.2) graph memory instrumentation in devtools (dev-only); corridor caps already in place.
+> (7.3) global error boundary → toast (deduped, offline-fetch noise filtered). (7.4) a11y:
+> ARIA labels/roles present throughout; reduced-motion respected in the route fit. (7.5) README:
+> Offline & PWA + Limitations sections. **220 unit + 30 e2e green.**
+
+---
+
+## E3.8 — Calibration harness · done (2026-11-07, constants pending real rides)
+
+> **Implementation notes:** `docs/CALIBRATION.md` documents the full tuning procedure: pick
+> known rides with watch moving times → plan the same routes → compare → adjust the documented
+> `COST` constants (table: constant → real-world anchor → typical range) → update the regression
+> fixtures. `tests/unit/calibration.test.ts` pins current-model behavior for representative
+> synthetic routes (flat road, rolling climb, steep S2 climb, S3 descent with correct direction
+> semantics, push/carry walking, surface/class speed ordering, forest-preference effect, mixed
+> loop sanity band 1–2.5 h). Real tuning requires the user's recorded rides — the harness makes
+> each adjustment measurable and regression-safe.

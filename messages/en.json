@@ -107,5 +107,6 @@
   "preset_name_placeholder": "Preset name…",
   "preset_add_confirm": "Save",
   "preset_delete": "Delete preset {name}",
-  "error_region_not_built": "This region is not in your map-data build"
+  "error_region_not_built": "This region is not in your map-data build",
+  "generic_error": "Something went wrong — please try again"
 }

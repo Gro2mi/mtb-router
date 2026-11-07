@@ -21,6 +21,27 @@
   let routeLayer: RouteLayer | undefined = $state();
 
   onMount(() => {
+    // global error boundary (E7.3): surface uncaught failures as a toast
+    // instead of failing silently; map tile 404s etc. are console-only
+    let lastGeneric = 0;
+    const generic = (): void => {
+      const now = Date.now();
+      if (now - lastGeneric > 4000) {
+        lastGeneric = now;
+        toast(i18n.m.generic_error());
+      }
+    };
+    const onError = (e: ErrorEvent): void => {
+      if (e.message?.includes('Failed to fetch')) return; // offline noise, handled elsewhere
+      generic();
+    };
+    const onRejection = (e: PromiseRejectionEvent): void => {
+      if (String(e.reason).includes('aborted')) return; // superseded plans
+      generic();
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+
     mapHandle = createMap(mapContainer);
     const { map } = mapHandle;
 
@@ -102,6 +123,8 @@
     window.addEventListener('keydown', onKeyDown);
 
     return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
       window.removeEventListener('keydown', onKeyDown);
       gestures.destroy();
       map.off('load', onMapLoad);

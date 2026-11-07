@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type BrowserContext } from '@playwright/test';
 
 /**
  * E6 route persistence tests: save → reload → load round-trip, GPX export
@@ -23,17 +23,17 @@ const TAP_TRACK = { x: BASE.x, y: BASE.y + 49 };
 const TAP_PATH = { x: BASE.x, y: BASE.y - 169 };
 const canvas = (page: Page) => page.locator('canvas.maplibregl-canvas');
 
-async function planRoute(page: Page): Promise<void> {
-  await page.route('**/api/interpreter*', async (route) => {
+async function planRoute(page: Page, context: BrowserContext): Promise<void> {
+  await context.route('**/api/interpreter*', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: fixture });
   });
-  await page.route('**/elevation-tiles-prod/**', (route) => route.abort());
+  await context.route('**/elevation-tiles-prod/**', (route) => route.abort());
   await page.addInitScript((viewport) => {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
 
   // hermetic: no tiles folder on this origin — the public chain is expected
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
     route.fulfill({ status: 404, body: 'not built' }),
   );
   await page.goto('/');
@@ -49,8 +49,8 @@ async function openRoutesTab(page: Page): Promise<void> {
   await expect(page.getByTestId('routes-panel')).toBeVisible();
 }
 
-test('save → reload → load restores the route with stats', async ({ page }) => {
-  await planRoute(page);
+test('save → reload → load restores the route with stats', async ({ page, context }) => {
+  await planRoute(page, context);
   await openRoutesTab(page);
 
   await page.getByTestId('route-name-input').fill('Nockspitze Abendrunde');
@@ -72,8 +72,8 @@ test('save → reload → load restores the route with stats', async ({ page }) 
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
 });
 
-test('GPX export downloads a schema-valid file', async ({ page }) => {
-  await planRoute(page);
+test('GPX export downloads a schema-valid file', async ({ page, context }) => {
+  await planRoute(page, context);
   await openRoutesTab(page);
 
   await page.getByTestId('route-name-input').fill('Export Test');
@@ -96,8 +96,8 @@ test('GPX export downloads a schema-valid file', async ({ page }) => {
   expect(gpx.trimEnd().endsWith('</gpx>')).toBe(true);
 });
 
-test('rename and delete work from the list', async ({ page }) => {
-  await planRoute(page);
+test('rename and delete work from the list', async ({ page, context }) => {
+  await planRoute(page, context);
   await openRoutesTab(page);
 
   await page.getByTestId('route-name-input').fill('Original');

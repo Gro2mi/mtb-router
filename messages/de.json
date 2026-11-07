@@ -107,5 +107,6 @@
   "preset_name_placeholder": "Vorlagenname…",
   "preset_add_confirm": "Speichern",
   "preset_delete": "Vorlage {name} löschen",
-  "error_region_not_built": "Diese Region ist nicht in deinem Karten-Datenbuild"
+  "error_region_not_built": "Diese Region ist nicht in deinem Karten-Datenbuild",
+  "generic_error": "Etwas ist schiefgelaufen – bitte erneut versuchen"
 }

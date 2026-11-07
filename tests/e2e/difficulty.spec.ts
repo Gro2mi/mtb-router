@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type BrowserContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -23,18 +23,18 @@ const TAP_TRACK = { x: BASE.x, y: BASE.y + 49 };
 const TAP_PATH = { x: BASE.x, y: BASE.y - 169 };
 const canvas = (page: Page) => page.locator('canvas.maplibregl-canvas');
 
-async function setupWithRoute(page: Page): Promise<number> {
+async function setupWithRoute(page: Page, context: BrowserContext): Promise<number> {
   const dbg: string[] = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' || m.text().includes('[tiles]')) dbg.push(m.text().slice(0, 200));
+    if (m.type() === 'error' || m.text().includes('[tiles]')) dbg.push(m.text().slice(0, 160));
   });
-  page.on('pageerror', (e) => dbg.push('[pageerror] ' + e.message.slice(0, 200)));
+  page.on('pageerror', (e) => dbg.push('[pageerror] ' + e.message.slice(0, 160)));
   let overpassRequests = 0;
-  await page.route('**/api/interpreter*', async (route) => {
+  await context.route('**/api/interpreter*', async (route) => {
     overpassRequests++;
     await route.fulfill({ contentType: 'application/json', body: fixture });
   });
-  await page.route('**/elevation-tiles-prod/**', (route) => route.abort());
+  await context.route('**/elevation-tiles-prod/**', (route) => route.abort());
   Object.defineProperty(page, 'overpassRequests', {
     get: () => overpassRequests,
     configurable: true,
@@ -44,28 +44,20 @@ async function setupWithRoute(page: Page): Promise<number> {
   }, SEED_VIEWPORT);
 
   // hermetic: no tiles folder on this origin — the public chain is expected
-  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
-    route.fulfill({ status: 404, body: 'not built' }),
-  );
+  await context.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) => {
+    dbg.push('[tiles-mock] ' + new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 404, body: 'not built' });
+  });
   await page.goto('/');
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Planning mode' }).click();
   await canvas(page).click({ position: TAP_TRACK });
   await canvas(page).click({ position: TAP_PATH });
-  await page.waitForTimeout(3000);
-  console.log('DBG-early:', dbg.join(' ~ ') || '(none)');
-  const alertText = await page.evaluate(
-    () => document.querySelector('[role="alert"]')?.textContent ?? '(no alert)',
-  );
-  console.log('DBG-ALERT:', alertText);
+  await page.waitForTimeout(6000);
+  console.log('DBG:', dbg.join(' ~ ') || '(none)');
+  console.log('TILEURL:', await page.evaluate(() => localStorage.getItem('mtbr.tileBaseUrl.v1')));
   await expect(page.getByTestId('route-stats')).toBeVisible({ timeout: 30_000 });
 
-  await page.waitForTimeout(2000);
-  console.log('DBG:', dbg.join(' ~ ') || '(none)');
-  const snapped = await page
-    .locator('.mtbr-waypoint')
-    .evaluateAll((els) => els.map((el) => el.getAttribute('data-snapped')));
-  console.log('DBG-SNAPPED:', JSON.stringify(snapped));
   await page.getByRole('button', { name: 'Difficulty' }).click();
   await expect(page.getByTestId('difficulty-panel')).toBeVisible();
   return overpassRequests;
@@ -74,8 +66,8 @@ async function setupWithRoute(page: Page): Promise<number> {
 const requestCount = (page: Page): number =>
   (page as Page & { overpassRequests?: number }).overpassRequests ?? 0;
 
-test('settings changes reroute live without refetching the corridor', async ({ page }) => {
-  const baseline = await setupWithRoute(page);
+test('settings changes reroute live without refetching the corridor', async ({ page, context }) => {
+  const baseline = await setupWithRoute(page, context);
 
   // uphill max 2 → 0: on the (flat) fixture nothing is excluded, the reroute
   // must succeed without any new Overpass request
@@ -93,8 +85,9 @@ test('settings changes reroute live without refetching the corridor', async ({ p
 
 test('hard limit: excluding S2+ downhill blocks the route and surfaces the error', async ({
   page,
+  context,
 }) => {
-  await setupWithRoute(page);
+  await setupWithRoute(page, context);
 
   // downhill MTB max 3 → 0: the S2 singletrail (waypoint 2 sits on it) is
   // excluded for through-travel → no route → widening → deterministic error
@@ -105,9 +98,9 @@ test('hard limit: excluding S2+ downhill blocks the route and surfaces the error
   });
 });
 
-test('applying a preset recovers from a blocked route', async ({ page }) => {
+test('applying a preset recovers from a blocked route', async ({ page, context }) => {
   test.setTimeout(60_000);
-  await setupWithRoute(page);
+  await setupWithRoute(page, context);
 
   await page.getByRole('slider', { name: 'Downhill MTB scale · maximum' }).fill('0');
   await expect(page.getByTestId('route-error')).toBeVisible({ timeout: 30_000 });
@@ -123,8 +116,11 @@ test('applying a preset recovers from a blocked route', async ({ page }) => {
   await expect(page.getByRole('slider', { name: 'Downhill MTB scale · maximum' })).toHaveValue('3');
 });
 
-test('forest-road preference and untagged toggle re-route without refetch', async ({ page }) => {
-  const baseline = await setupWithRoute(page);
+test('forest-road preference and untagged toggle re-route without refetch', async ({
+  page,
+  context,
+}) => {
+  const baseline = await setupWithRoute(page, context);
 
   await page.getByRole('button', { name: 'High' }).click();
   await page.getByRole('checkbox', { name: 'Avoid untagged singletrail' }).check();
@@ -140,8 +136,8 @@ test('forest-road preference and untagged toggle re-route without refetch', asyn
   );
 });
 
-test('custom presets: save, apply, survive reload, delete', async ({ page }) => {
-  await setupWithRoute(page);
+test('custom presets: save, apply, survive reload, delete', async ({ page, context }) => {
+  await setupWithRoute(page, context);
 
   // tweak settings then save as a custom preset
   await page.getByRole('button', { name: 'High' }).click();
