@@ -38,8 +38,6 @@ class PlanningState {
   indexVersion = $state(0);
   /** last routing result (null until E3 produces one) */
   route = $state<RouteResult | null>(null);
-  /** bumped when the WORKER produces a route (E5 zoom-to-fit trigger) */
-  routeVersion = $state(0);
   /** worker error code for the status pill */
   errorCode = $state<import('../../engine/protocol').WorkerErrorCode | null>(null);
 
@@ -62,7 +60,6 @@ class PlanningState {
     onRoute: (route) => {
       this.route = route;
       this.phase = 'ready';
-      this.routeVersion++;
     },
     onWidening: () => {
       this.widening = true;

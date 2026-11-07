@@ -154,12 +154,8 @@
     routeLayer?.setRoute(planning.route);
   });
 
-  // --- zoom-to-fit on freshly computed routes (E5.1) -----------------------
-  $effect(() => {
-    void planning.routeVersion;
-    const route = planning.route;
-    if (route) routeLayer?.fitToRoute(route);
-  });
+  // no zoom-to-fit: setting a waypoint (or a reroute) must never move the
+  // camera — the user keeps their zoom level and position (user request)
 
   // --- profile scrub ↔ map marker (E5.3) -----------------------------------
   $effect(() => {

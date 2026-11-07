@@ -1,11 +1,10 @@
 /**
  * Route rendering (E5.1/E5.2): casing + difficulty-colored line per segment
  * (data-driven `line-color`), separate dashed layer for walking-only edges,
- * segment popup on click (also drives the profile highlight), zoom-to-fit on
- * worker-produced routes, and the profile scrub marker.
+ * segment popup on click (also drives the profile highlight), and the profile
+ * scrub marker. The camera is never moved here — routes render in place.
  */
 import {
-  LngLatBounds,
   Marker,
   Popup,
   type GeoJSONSource,
@@ -186,21 +185,6 @@ export class RouteLayer {
       }
     }
     source.setData({ type: 'FeatureCollection', features });
-  }
-
-  /** zoom-to-fit for freshly computed routes (skipped when reduced motion) */
-  fitToRoute(route: RouteResult): void {
-    const bounds = new LngLatBounds();
-    for (const leg of route.legs) {
-      for (const seg of leg.segments) {
-        for (const [lat, lng] of seg.coords) {
-          bounds.extend([lng, lat]);
-        }
-      }
-    }
-    if (bounds.isEmpty()) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.map.fitBounds(bounds, { padding: 70, maxZoom: 16, linear: true, animate: !reduced });
   }
 
   /** elevation-profile scrub position rendered as a marker on the route */
