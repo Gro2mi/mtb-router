@@ -14,6 +14,8 @@ import {
 import { DEFAULT_VIEWPORT, loadViewport, saveViewport } from '../state/viewport';
 import { NorthControl } from './northControl';
 import { applyOutdoorContrast } from './outdoorContrast';
+import { registerPmtilesProtocol, probeOwnBasemap, rewriteStyleForOwnBasemap } from './ownBasemap';
+import { resolveTileBaseUrl } from '../osm/staticTiles';
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -24,6 +26,9 @@ export interface MapHandle {
 }
 
 export function createMap(container: HTMLElement): MapHandle {
+  // PMTiles support for the own-basemap mode (README: own basemap tiles)
+  registerPmtilesProtocol();
+
   // maplibre-gl v6 loads its worker via `new URL(..., import.meta.url)`, which
   // breaks under Vite (dev pre-bundling and the production bundle). Point it at
   // the copy in public/vendor, synced by scripts/sync-maplibre-worker.mjs.
@@ -60,6 +65,27 @@ export function createMap(container: HTMLElement): MapHandle {
 
   // high-visibility roads (tracks/cycleways are nearly invisible in stock Bright)
   map.on('load', () => applyOutdoorContrast(map));
+
+  // own-basemap mode: when basemap.pmtiles exists on the tile host, swap the
+  // hosted OpenFreeMap vector source for the own archive (README: own basemap)
+  map.on('load', async () => {
+    try {
+      const tileBase = await resolveTileBaseUrl();
+      if (!tileBase) return;
+      const basemap = await probeOwnBasemap(tileBase);
+      if (!basemap) return;
+      const res = await fetch(MAP_STYLE_URL);
+      const hosted = await res.json();
+      map.setStyle(
+        rewriteStyleForOwnBasemap(hosted, basemap) as Parameters<typeof map.setStyle>[0],
+        {
+          diff: false,
+        },
+      );
+    } catch {
+      // basemap swap is cosmetic — keep the hosted style on any failure
+    }
+  });
 
   // test seam: lets e2e inspect map layers without a component handle
   (window as unknown as Record<string, unknown>).__mtbrMap = map;

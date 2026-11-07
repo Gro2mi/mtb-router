@@ -434,3 +434,23 @@ resolution correct.
 `/mtb-router/` (with the trailing-slash redirect + SPA fallback) and the test asserts the app
 boots: map canvas, worker, style attribution, no page errors. Unit tests for the href-based
 candidate order (subfolder tiles → mtb-tiles → domain root). 199 unit + 28 e2e green.
+
+---
+
+## Own-basemap option (2026-11-07, "shouldn't I request my own pbf data?")
+
+**Diagnosis:** the requests to `tiles.openfreemap.org/planet/…/*.pbf` are the **basemap rendering
+tiles** of the Bright style — a display-only pipeline, separate from routing (which already runs on
+the self-hosted corridor tiles). Free, no key, no limits, works on the user's blocked network, and
+browser-cached — so keeping them is a valid default. For full self-hosting the same OSM data can
+produce the basemap too.
+
+**Implementation:** `src/lib/map/ownBasemap.ts` — pmtiles v4 `Protocol` registered via
+`maplibre.addProtocol` (idempotent); on map load the app probes `<tile host>/basemap.pmtiles`
+(HEAD) — present → the hosted Bright style JSON is fetched and its vector source URL rewritten to
+`pmtiles://…` (`map.setStyle(rewritten, { diff: false })`); absent → hosted style as usual.
+Glyphs/sprites stay hosted (few small requests); attribution unchanged.
+
+**User-side build (README):** Planetiler (`java -jar planetiler.jar --area=austria --download`,
+~1–2 GB output for z0–14) → `pmtiles convert` → upload as `tiles/basemap.pmtiles` (needs HTTP
+range requests — Apache default). 204 unit + 28 e2e green.

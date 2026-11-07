@@ -152,6 +152,32 @@ Notes:
   `curl -sI https://yourdomain.at/tiles/manifest.json` → `200`.
 - Rebuild + re-upload the tiles folder when you want fresher OSM data.
 
+## Own basemap tiles (optional — zero OpenFreeMap map traffic)
+
+The map _display_ uses OpenFreeMap's hosted Bright style: every pan/zoom fetches vector tiles from
+`tiles.openfreemap.org` (free, no key, no limits — this is normal slippy-map behavior and works
+even on otherwise-blocked networks). If you want the map display **fully self-hosted** too, build
+your own vector tiles from the same OSM data with [Planetiler](https://github.com/onthegomap/planetiler)
+(needs Java 17+) and upload a single-file PMTiles archive:
+
+```bash
+java -Xmx4g -jar planetiler.jar --area=austria --download   # -> austria.mbtiles (~1–2 GB)
+pmtiles convert austria.mbtiles austria.pmtiles             # pmtiles CLI: github.com/protomaps/PMTiles/releases
+```
+
+Upload `austria.pmtiles` to your webspace as **`tiles/basemap.pmtiles`** (next to `manifest.json`).
+On startup the app probes for that file: present → the map renders from your archive; absent →
+OpenFreeMap as usual. No rebuild or setting needed.
+
+Notes:
+
+- The archive covers the built region only (Austria) — planning elsewhere shows a plain background
+  (routing likewise needs a matching tile build).
+- Map **labels/fonts** still come from the hosted glyphs endpoint (a few small requests).
+- OSM attribution stays in place (legally required, data © OpenStreetMap contributors).
+- PMTiles needs HTTP **range requests** — supported by Apache/IIS by default; verify with
+  `curl -sI -H "Range: bytes=0-100" https://yourdomain.at/tiles/basemap.pmtiles` (expect `206`).
+
 ## Attribution
 
 - Map & routing data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL)
