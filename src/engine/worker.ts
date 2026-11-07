@@ -2,7 +2,9 @@
  * Engine worker (E3.1, PLAN §5): corridor loading (cache → self-hosted tiles
  * → Overpass → OSM API), graph build, elevation attach, waypoint snapping and
  * bidirectional-A* routing — all off the main thread. The widening loop
- * retries the whole pipeline at 2 → 5 → 10 km when a leg is unreachable.
+ * retries the whole pipeline at 2 → 5 → 10 km — only when a waypoint is off
+ * the network; normally-snapped waypoints route once with the beeline
+ * fallback instead (fast path, no widening).
  */
 import {
   corridorKey,
@@ -213,6 +215,17 @@ async function plan(
   lastPoints = points;
   lastSettings = settings;
   setTileBaseUrlOverride(tileBaseUrl);
+
+  // The widening loop only pays off when a waypoint is off the network
+  // (user request): if every waypoint snaps against the current index, one
+  // attempt at the base radius with the beeline fallback is enough — adding
+  // a normally-snapped waypoint must not re-run 2 → 5 → 10 km. No index yet
+  // (first plan / new region) → take the full path.
+  const preSnaps = snapIndex ? snapAll(points, snapRadiusM) : null;
+  if (preSnaps && preSnaps.every((s) => s !== null)) {
+    await attempt(id, points, settings, RADIUS_STEPS[0]!, snapRadiusM, my, true);
+    return;
+  }
 
   for (let i = 0; i < RADIUS_STEPS.length; i++) {
     const result = await attempt(id, points, settings, RADIUS_STEPS[i]!, snapRadiusM, my);
