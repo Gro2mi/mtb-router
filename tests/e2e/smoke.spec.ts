@@ -77,4 +77,20 @@ test.describe('mobile viewport', () => {
 
     await expect(page.getByRole('button', { name: 'Difficulty' })).toBeVisible();
   });
+
+  test('any tap on the collapsed sheet opens it; plan button clears the open sheet', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('stats-row')).toBeVisible();
+
+    // tap the stats bar itself (not the handle) → sheet opens
+    await page.getByTestId('stat-distance').click();
+    await expect(page.getByRole('button', { name: 'Difficulty' })).toBeVisible();
+
+    // collapse again via the handle → the plan-mode FAB is back above the bar
+    await page.getByRole('button', { name: 'Hide panel' }).click();
+    await expect(page.getByRole('button', { name: 'Difficulty' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Planning mode' })).toBeVisible();
+  });
 });

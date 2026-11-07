@@ -30,6 +30,12 @@ function loadSnapRadius(): number {
 class PlanningState {
   mode = $state<PlanningMode>('browse');
 
+  /**
+   * Mobile bottom sheet expanded? (Desktop drawer is always open — the
+   * Fab hides itself on phones while the sheet covers the map corner.)
+   */
+  sheetExpanded = $state(false);
+
   phase = $state<CorridorPhase>('idle');
   /** 0 tiles, 1 trails, 2 roads, 3 OSM-API fallback, 4 elevation */
   stage = $state<0 | 1 | 2 | 3 | 4>(0);

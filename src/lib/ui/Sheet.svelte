@@ -26,7 +26,6 @@
 
   type Tab = 'route' | 'difficulty' | 'routes';
 
-  let expanded = $state(false);
   let activeTab = $state<Tab>('route');
 
   // >= lg the panel is a persistent side drawer and always expanded (E1.4).
@@ -39,8 +38,24 @@
     return () => mq.removeEventListener('change', update);
   });
 
-  const open = $derived(expanded || isDesktop);
+  const open = $derived(planning.sheetExpanded || isDesktop);
   const count = $derived(waypoints.waypoints.length);
+
+  // phone usability: adding a waypoint in plan mode collapses the sheet so
+  // the map (and the FAB) are visible again while planning
+  $effect(() => {
+    if (waypoints.waypoints.length > 0 && planning.mode === 'plan') {
+      planning.sheetExpanded = false;
+    }
+  });
+
+  /** whole collapsed bar opens on any tap (not just the handle) */
+  function openOnBackground(e: MouseEvent): void {
+    if ((e.target as Element | null)?.closest('button, a, input, select, label, details, summary')) {
+      return;
+    }
+    planning.sheetExpanded = true;
+  }
 
   let tileUrlDraft = $state(getTileBaseUrl() ?? '');
 
@@ -69,20 +84,35 @@
       class="flex min-h-11 w-full flex-col items-center justify-center lg:hidden"
       aria-expanded={open}
       aria-controls="sheet-content"
-      onclick={() => (expanded = !expanded)}
+      onclick={() => (planning.sheetExpanded = !planning.sheetExpanded)}
     >
       <span class="h-1.5 w-12 rounded-full bg-slate-400 dark:bg-slate-500"></span>
       <span class="sr-only">{open ? i18n.m.sheet_collapse() : i18n.m.sheet_expand()}</span>
     </button>
 
-    <header class="flex items-center justify-between gap-2 px-4 pt-1 pb-2 lg:pt-4">
+    <!-- keyboard users toggle via the handle button below; these click
+         handlers are pointer-convenience for touch phones -->
+    <header
+      role="presentation"
+      class="flex items-center justify-between gap-2 px-4 pt-1 pb-2 lg:pt-4 {!open
+        ? 'cursor-pointer'
+        : ''}"
+      onclick={!open ? openOnBackground : undefined}
+    >
       <h1 class="text-base font-extrabold tracking-tight">{i18n.m.app_name()}</h1>
       <LocaleSwitcher />
     </header>
 
     {#if !open}
-      <!-- Collapsed stats bar — live from the engine since E3. -->
-      <div class="grid grid-cols-3 gap-2 px-4 pb-3 text-center" data-testid="stats-row">
+      <!-- Collapsed stats bar — live from the engine since E3. Any tap on it
+           (or the header) opens the sheet; only the handle collapses again. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+      <div
+        role="group"
+        class="grid cursor-pointer grid-cols-3 gap-2 px-4 pb-3 text-center"
+        data-testid="stats-row"
+        onclick={openOnBackground}
+      >
         <div>
           <div class="text-lg font-extrabold tabular-nums" data-testid="stat-distance">
             {route ? formatKm(route.total.distanceM) : '–'}
