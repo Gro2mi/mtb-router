@@ -403,6 +403,7 @@ tiles were re-downloaded, re-parsed and re-merged on **every** plan, and each pl
 a multi-MB IndexedDB corridor-cache write before snapping/routing could start.
 
 **Fixes:**
+
 - worker **session tile cache**: parsed tiles, 404 tombstones and the validated manifest are
   cached per session — growing a polyline only fetches the newly-covered tiles; repeated
   corridors skip parsing entirely;
@@ -414,3 +415,22 @@ a multi-MB IndexedDB corridor-cache write before snapping/routing could start.
 **Testing:** new unit test "reuses session-cached tiles when the corridor grows" (a second,
 further waypoint fetches only the new tiles). `setTileBaseUrl` clears the session caches on host
 changes; `resetTileResolution` clears them for tests. 188 unit + 27 e2e green.
+
+---
+
+## Subfolder deploy support (2026-11-07, user request "mydomain.com/mtb-router")
+
+**Diagnosis:** the built app used absolute asset paths (`base: '/'`), so from
+`mydomain.com/mtb-router/` the browser requested `/assets/…` at the domain root → 404 → blank page.
+
+**Fixes:** Vite `base: './'` (relative asset paths — the build works from the domain root OR any
+subfolder without rebuilding); the MapLibre worker URL and the tile auto-discovery candidates are
+now resolved against the **page URL** (`new URL(..., location.href)`) instead of `BASE_URL`
+concatenation, so `tiles/` next to `index.html` is found in any subfolder deploy. Servers redirect
+`/mtb-router` → `/mtb-router/` automatically (Apache default), which is what makes page-relative
+resolution correct.
+
+**Testing:** new e2e `subfolder.spec.ts` — an inline node static server serves `dist/` under
+`/mtb-router/` (with the trailing-slash redirect + SPA fallback) and the test asserts the app
+boots: map canvas, worker, style attribution, no page errors. Unit tests for the href-based
+candidate order (subfolder tiles → mtb-tiles → domain root). 199 unit + 28 e2e green.

@@ -255,6 +255,221 @@ describe('resolveTileBaseUrl auto-discovery', () => {
       setItem: (k: string, v: string) => void storage.set(k, v),
       removeItem: (k: string) => void storage.delete(k),
     });
+    // page at a SUBFOLDER deploy: mydomain.com/mtb-router/
+    vi.stubGlobal('window', {
+      location: { origin: 'https://app.test', href: 'https://app.test/mtb-router/' },
+    });
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+
+  /** responses keyed by the tile FOLDER NAME (tiles / mtb-tiles) */
+  function mockAutoDiscovery(folders: Record<string, unknown>): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const m = /[/]([^/]+)\/manifest\.json$/.exec(String(url));
+        if (m) {
+          const value = folders[m[1]!];
+          if (value === 404 || value === undefined) return new Response('nf', { status: 404 });
+          return new Response(JSON.stringify(value));
+        }
+        return new Response('nf', { status: 404 });
+      }),
+    );
+  }
+
+  it('discovers tiles next to the page in a subfolder deploy', async () => {
+    resetTileResolution();
+    mockAutoDiscovery({ tiles: manifest });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/mtb-router/tiles');
+  });
+
+  it('falls through to mtb-tiles and the domain root when tiles is missing', async () => {
+    resetTileResolution();
+    mockAutoDiscovery({ tiles: 404, 'mtb-tiles': manifest });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/mtb-router/mtb-tiles');
+  });
+
+  it('rejects candidates with a wrong manifest format', async () => {
+    resetTileResolution();
+    mockAutoDiscovery({ tiles: { formatVersion: 1, tileDeg: TILE_DEG }, 'mtb-tiles': manifest });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/mtb-router/mtb-tiles');
+  });
+
+  it('returns null when nothing matches', async () => {
+    resetTileResolution();
+    mockAutoDiscovery({});
+    expect(await resolveTileBaseUrl()).toBeNull();
+  });
+
+  it('caches the session resolution (no re-probing)', async () => {
+    resetTileResolution();
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        calls++;
+        if (/[/]tiles\/manifest\.json$/.test(String(url))) {
+          return new Response(JSON.stringify(manifest));
+        }
+        return new Response('nf', { status: 404 });
+      }),
+    );
+    await resolveTileBaseUrl();
+    const afterFirst = calls;
+    await resolveTileBaseUrl();
+    await resolveTileBaseUrl();
+    expect(calls).toBe(afterFirst); // no additional probes
+  });
+
+  it('explicit setting wins over discovery without probing', async () => {
+    resetTileResolution();
+    const fetchMock = vi.fn(async () => new Response('nf', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    setTileBaseUrl('https://elsewhere.example/at');
+    expect(await resolveTileBaseUrl()).toBe('https://elsewhere.example/at');
+    expect(fetchMock).not.toHaveBeenCalled();
+    setTileBaseUrl('');
+    resetTileResolution();
+  });
+});
+
+describe('fetchCorridorViaTiles provider', () => {
+  beforeAll(() => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+      removeItem: (k: string) => void storage.delete(k),
+    });
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns a merged bundle; 404 tiles (region edge) are skipped', async () => {
+    const { tiles } = await buildBundleFromFixtureXml();
+    const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith('manifest.json')) return new Response(JSON.stringify(manifest));
+      const key = href.split('/').pop()!.replace('.json', '');
+      const tile = tiles.get(key);
+      // x=79 tiles don't exist — corridor pad reaches them (edge case)
+      if (!tile) return new Response('not found', { status: 404 });
+      return new Response(JSON.stringify(tile));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    setTileBaseUrl('https://tiles.example/at/');
+
+    try {
+      const result = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
+      expect(result.status).toBe('ok');
+      const bundle = (result as { status: 'ok'; bundle: WaysBundle }).bundle;
+      expect(bundle.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1003, 1004, 1005]);
+      const index = new SnapIndex(bundle);
+      expect(index.snap(8.0015, 47.0, 10)!.wayId).toBe(1001);
+      // manifest + 4 corridor tiles requested (x 79..80, y 469..470)
+      expect(fetchMock.mock.calls.length).toBe(5);
+    } finally {
+      setTileBaseUrl('');
+    }
+  });
+
+  it('reports region-miss when no tile in the corridor area exists', async () => {
+    const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith('manifest.json')) {
+          return new Response(JSON.stringify(manifest));
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+    setTileBaseUrl('https://tiles.example/empty/');
+    try {
+      expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('region-miss');
+    } finally {
+      setTileBaseUrl('');
+    }
+  });
+
+  it('reports unreachable on server errors other than 404', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('boom', { status: 500 })),
+    );
+    setTileBaseUrl('https://tiles.example/broken/');
+    try {
+      expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('unreachable');
+    } finally {
+      setTileBaseUrl('');
+    }
+  });
+
+  it('reuses session-cached tiles when the corridor grows', async () => {
+    resetTileResolution();
+    const { tiles } = await buildBundleFromFixtureXml();
+    const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const key = String(url).split('/').pop()!.replace('.json', '');
+      if (String(url).endsWith('manifest.json')) {
+        return new Response(JSON.stringify(manifest));
+      }
+      const tile = tiles.get(key);
+      if (!tile) return new Response('nf', { status: 404 });
+      return new Response(JSON.stringify(tile));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    setTileBaseUrl('https://tiles.example/growth/');
+
+    try {
+      const r1 = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
+      if (r1?.status !== 'ok') throw new Error('expected ok');
+      const count1 = fetchMock.mock.calls.length;
+
+      // grow the corridor: a second waypoint one tile to the east
+      const r2 = await fetchCorridorViaTiles(
+        [
+          [8.002, 47.0002],
+          [8.25, 47.0002],
+        ],
+        2000,
+      );
+      const count2 = fetchMock.mock.calls.length;
+
+      expect(count2).toBeGreaterThan(count1); // fetched the new tiles
+      expect(count2 - count1).toBeLessThan(10); // but NOT the whole corridor again
+      if (r2?.status !== 'ok') throw new Error('expected ok');
+      expect(r2.bundle.ways.length).toBeGreaterThanOrEqual(
+        r1.status === 'ok' ? r1.bundle.ways.length : 0,
+      );
+    } finally {
+      setTileBaseUrl('');
+    }
+  });
+
+  it('reports not-configured when no URL is set', async () => {
+    setTileBaseUrl('');
+    expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('not-configured');
+  });
+});
+
+describe('resolveTileBaseUrl auto-discovery', () => {
+  beforeAll(() => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+      removeItem: (k: string) => void storage.delete(k),
+    });
     vi.stubGlobal('window', { location: { origin: 'https://app.test' } });
   });
 

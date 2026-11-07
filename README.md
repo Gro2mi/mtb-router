@@ -114,9 +114,10 @@ Rebuild whenever you want fresher data (Geofabrik extracts update daily).
 
 ## Deploying the app + tiles together (single webspace)
 
-One upload to your webspace root (e.g. IONOS) serves the app **and** the map data — the app
-auto-probes a `tiles/` or `mtb-tiles/` folder next to `index.html` (and at the domain root), so
-no setting is needed:
+One upload serves the app **and** the map data — the app auto-probes a `tiles/` or `mtb-tiles/`
+folder next to `index.html` and at the domain root, so no setting is needed. The built app uses
+**relative paths**, so it deploys to the domain root OR any subfolder (`mydomain.com/mtb-router/`)
+without rebuilding:
 
 ```bash
 npm run build          # app -> dist/  (Vite clears dist/, so build the app first)
@@ -131,9 +132,17 @@ assets/…          <- app bundle
 tiles/            <- manifest.json, t_*.json, .htaccess (CORS + gzip)
 ```
 
-The layout is flexible: the app also probes `mtb-tiles/` next to `index.html` and
-`/tiles`, `/mtb-tiles` at the domain root — so the app can live in a subfolder while the tiles
-sit at the root. An explicit URL in the Route tab always wins over auto-discovery.
+The layout is flexible — three working variants:
+
+| App            | Tiles                  | Works?                                 |
+| -------------- | ---------------------- | -------------------------------------- |
+| `/mtb-router/` | `/mtb-router/tiles/`   | ✓ auto-discovered (next to index.html) |
+| `/mtb-router/` | `/tiles` (domain root) | ✓ auto-discovered (root fallback)      |
+| `/`            | `/tiles`               | ✓                                      |
+
+An explicit URL in the Route tab always wins over auto-discovery (use it when the tiles live on a
+different domain). Browsers open `/mtb-router` without the trailing slash → servers redirect to
+`/mtb-router/` automatically (Apache does this by default) — always share the trailing-slash URL.
 
 Notes:
 

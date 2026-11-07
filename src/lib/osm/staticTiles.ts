@@ -56,29 +56,29 @@ export function setTileBaseUrl(url: string): void {
  * app-relative (`tiles`, `mtb-tiles`) and domain-root (`/tiles`, `/mtb-tiles`).
  * A folder counts when its manifest.json matches the expected format.
  */
-const AUTO_CANDIDATES = ['tiles', 'mtb-tiles', '/tiles', '/mtb-tiles'];
+const AUTO_CANDIDATE_NAMES = ['tiles', 'mtb-tiles'];
 
 /** Resolved base for this session: undefined = not probed yet, null = none found. */
 let resolvedBase: string | null | undefined = undefined;
 
-function origin(): string {
-  try {
-    return window.location.origin;
-  } catch {
-    return '';
-  }
-}
-
-function appBase(): string {
-  return import.meta.env.BASE_URL ?? '/';
-}
-
-/** Candidate URLs, app-relative first, then domain-root. */
+/** Candidate URLs: next to the page (any subfolder deploy) first, then domain-root. */
 export function autoTileCandidates(): string[] {
-  const o = origin();
-  return AUTO_CANDIDATES.map((c) =>
-    c.startsWith('/') ? `${o}${c}` : `${o}${appBase() === '/' ? '/' : appBase()}${c}`,
-  );
+  const out: string[] = [];
+  try {
+    // the folder containing the current page (trailing slash) — works for
+    // mydomain.com/mtb-router/ as well as the domain root
+    const pageDir = new URL('.', window.location.href).href;
+    for (const name of AUTO_CANDIDATE_NAMES) out.push(new URL(name, pageDir).href);
+  } catch {
+    // location unavailable — fall through to origin-relative candidates
+  }
+  try {
+    const o = window.location.origin;
+    out.push(`${o}/tiles`, `${o}/mtb-tiles`);
+  } catch {
+    // location unavailable
+  }
+  return [...new Set(out)];
 }
 
 async function probeCandidate(base: string, signal?: AbortSignal): Promise<boolean> {

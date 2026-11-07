@@ -27,7 +27,9 @@ export function createMap(container: HTMLElement): MapHandle {
   // maplibre-gl v6 loads its worker via `new URL(..., import.meta.url)`, which
   // breaks under Vite (dev pre-bundling and the production bundle). Point it at
   // the copy in public/vendor, synced by scripts/sync-maplibre-worker.mjs.
-  setWorkerUrl(`${import.meta.env.BASE_URL}vendor/maplibre-gl-worker.mjs`);
+  // Page-relative: works at the domain root AND in any subfolder deploy
+  // (the page URL carries the folder, so relative resolution is correct).
+  setWorkerUrl(new URL('vendor/maplibre-gl-worker.mjs', location.href).href);
 
   const initial = loadViewport(localStorage) ?? DEFAULT_VIEWPORT;
 
