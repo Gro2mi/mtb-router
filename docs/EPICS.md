@@ -322,3 +322,39 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 | FR-8 elevation profile & stats                             | E3.5, E5.2/5.3                          |
 | FR-9 save & load routes                                    | E6.1/6.3                                |
 | FR-10 EN/DE i18n                                           | E1.6 (all epics add strings through it) |
+
+---
+
+## Loading-speed fix — blocked networks (2026-11-07, user report "stuck in loading loop")
+
+**Diagnosis:** on a network that black-holes Overpass, every corridor load burned the full
+tiered timeout ladder (3 mirrors × 2 stages ≈ 160 s) before the OSM API fallback started — and
+nothing remembered the failure, so **every new waypoint (new corridor key) repeated it**. The
+widening loop (2→5→10 km) tripled it, and the route waited for a 10 s elevation hang (AWS s3
+also blocked) before displaying anything.
+
+**Fixes:**
+- Overpass mirrors now **race in parallel** (Promise.any, first success wins, losers aborted)
+  with one timeout per stage (15 s trails / 45 s roads) instead of escalating per-mirror waits;
+- per-mirror **cooldown** (5 min) after a failure plus a global **Overpass cooldown** — once all
+  mirrors fail, subsequent corridors skip Overpass entirely and go straight to the OSM API
+  (superseded-plan aborts do not set cooldowns);
+- OSM API fallback: boxes enlarged 0.012°→0.02°, cap 24→64, **global box dedupe** (consecutive
+  anchors share grid cells — the cap previously starved later segments);
+- worker reorder: **route is computed and posted FIRST** (flat costs), elevation is fetched
+  afterwards and the route is recomputed + re-posted with climb-aware costs — the line appears
+  immediately even when elevation is slow or blocked; the "Loading elevation…" pill no longer
+  flashes when elevation is known-degraded;
+- tile host diagnostics: console warnings when the tile build's manifest is an old format, the
+  region isn't covered, or the host is unreachable.
+
+**Testing:** overpassCooldown unit suite (mirror race, black-hole fallback, cooldown skip +
+expiry, dual-source failure) with fake timers; e2e stabilized for the two-phase route post
+(flat → elevation-refined): popup/scrub tests wait for a stable route via `waitForStableRoute`,
+the popup click exits plan mode (a plan-mode click adds a waypoint), the waypoints suite waits
+for map style readiness, and the cache test asserts the second undo/redo cycle issues zero
+requests. 181 unit + 26 e2e green.
+
+**Recommendation for blocked networks:** self-hosted tiles (stage 0) remain the only instant
+path — rebuild tiles with the current builder (format v2) and set the URL in the Route tab;
+diagnostics now warn when the build is stale.
