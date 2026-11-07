@@ -178,6 +178,25 @@ Notes:
 - PMTiles needs HTTP **range requests** — supported by Apache/IIS by default; verify with
   `curl -sI -H "Range: bytes=0-100" https://yourdomain.at/tiles/basemap.pmtiles` (expect `206`).
 
+## Offline & PWA
+
+The app is an installable PWA: after opening it once, use your browser's **Install app** action
+(address-bar icon / browser menu) for a standalone window with an app icon. A service worker
+precaches the app shell and caches visited map data (basemap tiles, your corridor tiles,
+elevation) — visited regions and previously planned rides stay available **offline**. New app
+versions activate automatically on the next online visit.
+
+## Limitations
+
+- Routing quality depends on OSM data: `mtb:scale` tags are sparse in some regions; untagged ways
+  get a conservative inference (see the Difficulty tab legend).
+- Node-level difficulty (crux spots) and per-country access rules are approximated.
+- The corridor fetch radius is capped — extremely long detours outside the corridor need via
+  points (the widening loop helps but has limits).
+- Elevation comes from AWS Terrain Tiles; on networks that block AWS the profile is unavailable
+  (the route still works, with flat-cost estimates).
+- No turn-by-turn navigation — this is a planning tool.
+
 ## Attribution
 
 - Map & routing data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL)
