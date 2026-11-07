@@ -28,10 +28,7 @@ function mockFetch(behavior: {
     'fetch',
     vi.fn(async (url: string | URL | Request, init?: { body?: string; signal?: AbortSignal }) => {
       const href = String(url);
-      const body =
-        typeof (init as { body?: string } | undefined)?.body === 'string'
-          ? (init as { body: string }).body
-          : '';
+      const body = typeof init?.body === 'string' ? init.body : '';
       const isStage1 = body.includes('track|path|cycleway|bridleway');
       fetchCalls.push(href);
       if (href.includes('/api/interpreter')) {
@@ -67,7 +64,7 @@ describe('Overpass mirror race + cooldown (speed fix)', () => {
   beforeEach(() => {
     fetchCalls.length = 0;
     resetOverpassState();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
@@ -75,13 +72,36 @@ describe('Overpass mirror race + cooldown (speed fix)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('races mirrors: a failing first mirror does not delay the answering one', async () => {
-    mockFetch({ mirrors: 'first-ok' });
-    const bundle = await fetchCorridor(points, 2000);
-    expect(bundle.ways.map((w) => w.id)).toEqual([10]);
-    // no OSM API fallback traffic — Overpass answered
-    expect(fetchCalls.some((c) => c.includes('api.openstreetmap.org'))).toBe(false);
-  });
+  /**
+   * Drive fake time forward until the corridor settles — mirror stagger,
+   * timeouts and OSM-API spacing are all fake-timer driven, so this runs
+   * deterministically instead of in real time.
+   */
+  async function advanceUntilDone<T>(promise: Promise<T>, maxFakeMs = 120_000): Promise<T> {
+    let settled = false;
+    const tracked = promise.finally(() => {
+      settled = true;
+    });
+    let advanced = 0;
+    while (!settled && advanced < maxFakeMs) {
+      await vi.advanceTimersByTimeAsync(250);
+      advanced += 250;
+    }
+    if (!settled) throw new Error('corridor did not settle within the fake-time budget');
+    return await tracked;
+  }
+
+  it(
+    'races mirrors: a failing first mirror does not delay the answering one',
+    { timeout: 20_000 },
+    async () => {
+      mockFetch({ mirrors: 'first-ok' });
+      const bundle = await advanceUntilDone(fetchCorridor(points, 2000));
+      expect(bundle.ways.map((w) => w.id)).toEqual([10]);
+      // no OSM API fallback traffic — Overpass answered
+      expect(fetchCalls.some((c) => c.includes('api.openstreetmap.org'))).toBe(false);
+    },
+  );
 
   it('black-holed mirrors: corridor comes from the OSM API after one timeout window', async () => {
     mockFetch({ mirrors: 'hang', osmApi: 'ok' });
@@ -94,34 +114,34 @@ describe('Overpass mirror race + cooldown (speed fix)', () => {
 
   it(
     'cooldown: after a total failure the next corridor skips Overpass entirely',
-    { timeout: 20_000 },
+    { timeout: 30_000 },
     async () => {
       mockFetch({ mirrors: 'reject', osmApi: 'ok' });
 
-      await fetchCorridor(points, 2000);
+      await advanceUntilDone(fetchCorridor(points, 2000));
       const mirrorCallsAfterFirst = fetchCalls.filter((c) => c.includes('/api/interpreter')).length;
       expect(mirrorCallsAfterFirst).toBeGreaterThan(0); // it did try the mirrors
 
       fetchCalls.length = 0;
-      await fetchCorridor(points, 2000);
+      await advanceUntilDone(fetchCorridor(points, 2000));
       // cooldown active: zero mirror requests, straight to the OSM API
       expect(fetchCalls.filter((c) => c.includes('/api/interpreter'))).toHaveLength(0);
       expect(fetchCalls.some((c) => c.includes('api.openstreetmap.org'))).toBe(true);
     },
   );
 
-  it('cooldown expires and mirrors are tried again', { timeout: 20_000 }, async () => {
+  it('cooldown expires and mirrors are tried again', { timeout: 30_000 }, async () => {
     mockFetch({ mirrors: 'reject', osmApi: 'ok' });
-    await fetchCorridor(points, 2000); // sets the global cooldown
+    await advanceUntilDone(fetchCorridor(points, 2000)); // sets the global cooldown
 
     fetchCalls.length = 0;
     await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000); // cooldown expires
-    await fetchCorridor(points, 2000);
+    await advanceUntilDone(fetchCorridor(points, 2000));
     expect(fetchCalls.filter((c) => c.includes('/api/interpreter')).length).toBeGreaterThan(0);
   });
 
-  it('both sources failing surfaces the corridor error', async () => {
+  it('both sources failing surfaces the corridor error', { timeout: 20_000 }, async () => {
     mockFetch({ mirrors: 'reject', osmApi: 'reject' });
-    await expect(fetchCorridor(points, 2000)).rejects.toThrow();
+    await expect(advanceUntilDone(fetchCorridor(points, 2000))).rejects.toThrow();
   });
 });

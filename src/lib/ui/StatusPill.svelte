@@ -38,7 +38,9 @@
           ? i18n.m.error_waypoint()
           : planning.errorCode === 'no_route'
             ? i18n.m.error_no_route()
-            : i18n.m.corridor_error()}
+            : planning.errorCode === 'region_not_built'
+              ? i18n.m.error_region_not_built()
+              : i18n.m.corridor_error()}
         <button
           type="button"
           class="rounded-full bg-white px-2 py-0.5 font-bold text-red-700 hover:bg-red-50"

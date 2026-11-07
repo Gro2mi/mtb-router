@@ -40,7 +40,7 @@
   "clear": "Leeren",
   "snap_radius": "Fangradius",
   "tiles_url_label": "URL selbst gehosteter Kartendaten",
-  "tiles_url_hint": "Basis-URL deines Tile-Builds (enthält manifest.json). Leer lassen, um die öffentlichen Overpass-Server zu nutzen.",
+  "tiles_url_hint": "Leer lassen, um automatisch einen Tiles-Ordner neben der App zu finden (tiles/ oder mtb-tiles/).",
   "tiles_url_save": "Speichern",
   "delete_waypoint": "Wegpunkt löschen",
   "insert_via_here": "Hier Zwischenpunkt einfügen",
@@ -106,5 +106,6 @@
   "preset_add": "Aktuelle speichern",
   "preset_name_placeholder": "Vorlagenname…",
   "preset_add_confirm": "Speichern",
-  "preset_delete": "Vorlage {name} löschen"
+  "preset_delete": "Vorlage {name} löschen",
+  "error_region_not_built": "Diese Region ist nicht in deinem Karten-Datenbuild"
 }

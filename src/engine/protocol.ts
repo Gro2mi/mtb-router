@@ -49,7 +49,7 @@ export type HostToWorker =
   | { id: number; type: 'snapProbe'; lng: number; lat: number }
   | { type: 'cancel' };
 
-export type WorkerErrorCode = 'corridor' | 'no_route' | 'waypoint';
+export type WorkerErrorCode = 'corridor' | 'no_route' | 'waypoint' | 'region_not_built';
 
 export type WorkerToHost =
   | { id: number; type: 'progress'; stage: EngineStage }

@@ -40,6 +40,7 @@ export function getTileBaseUrl(): string | null {
 }
 
 export function setTileBaseUrl(url: string): void {
+  resolvedBase = undefined; // re-resolve on the next corridor (override may have changed)
   try {
     const normalized = url.trim().replace(/\/+$/, '');
     if (normalized === '') localStorage.removeItem(TILE_BASE_KEY);
@@ -47,6 +48,74 @@ export function setTileBaseUrl(url: string): void {
   } catch {
     // private mode — setting won't persist
   }
+}
+
+/**
+ * Auto-discovery (user request): probe for a tiles folder next to the app —
+ * app-relative (`tiles`, `mtb-tiles`) and domain-root (`/tiles`, `/mtb-tiles`).
+ * A folder counts when its manifest.json matches the expected format.
+ */
+const AUTO_CANDIDATES = ['tiles', 'mtb-tiles', '/tiles', '/mtb-tiles'];
+
+/** Resolved base for this session: undefined = not probed yet, null = none found. */
+let resolvedBase: string | null | undefined = undefined;
+
+function origin(): string {
+  try {
+    return window.location.origin;
+  } catch {
+    return '';
+  }
+}
+
+function appBase(): string {
+  return import.meta.env.BASE_URL ?? '/';
+}
+
+/** Candidate URLs, app-relative first, then domain-root. */
+export function autoTileCandidates(): string[] {
+  const o = origin();
+  return AUTO_CANDIDATES.map((c) =>
+    c.startsWith('/') ? `${o}${c}` : `${o}${appBase() === '/' ? '/' : appBase()}${c}`,
+  );
+}
+
+async function probeCandidate(base: string, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const manifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
+    return manifest.formatVersion === TILE_FORMAT_VERSION && manifest.tileDeg === TILE_DEG;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the tile base URL for this session: the explicit setting wins,
+ * otherwise candidates on the same domain are probed once (a valid
+ * manifest.json = tiles found). Result is cached for the session; changing
+ * the setting re-resolves.
+ */
+export async function resolveTileBaseUrl(signal?: AbortSignal): Promise<string | null> {
+  if (resolvedBase !== undefined) return resolvedBase;
+  const explicit = getTileBaseUrl();
+  if (explicit) {
+    resolvedBase = explicit;
+    return resolvedBase;
+  }
+  for (const candidate of autoTileCandidates()) {
+    if (await probeCandidate(candidate, signal)) {
+      console.info(`[tiles] auto-discovered tile host at ${candidate}`);
+      resolvedBase = candidate;
+      return resolvedBase;
+    }
+  }
+  resolvedBase = null;
+  return null;
+}
+
+/** test hook: forget the session resolution */
+export function resetTileResolution(): void {
+  resolvedBase = undefined;
 }
 
 export interface TileRange {
@@ -172,19 +241,37 @@ async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
  * not built) — callers fall back to the Overpass chain. Individual 404 tiles
  * count as "no data in this tile" (region edges, lakes) and are skipped.
  */
+/** Outcome of the tiles provider (E6 tiles-only mode). */
+export type TilesResult =
+  | { status: 'ok'; bundle: WaysBundle }
+  | { status: 'not-configured' }
+  | { status: 'region-miss' }
+  | { status: 'unreachable' };
+
+/** Thrown by the corridor chain when tiles-only mode fails. */
+export type TileDataErrorReason = 'region-miss' | 'unreachable';
+export class TileDataError extends Error {
+  constructor(readonly reason: TileDataErrorReason) {
+    super(
+      reason === 'region-miss' ? 'region not covered by the tile build' : 'tile host unreachable',
+    );
+    this.name = 'TileDataError';
+  }
+}
+
 export async function fetchCorridorViaTiles(
   points: [number, number][],
   radiusM: number,
   signal?: AbortSignal,
-): Promise<WaysBundle | null> {
+): Promise<TilesResult> {
   const base = getTileBaseUrl();
-  if (!base || points.length === 0) return null;
+  if (!base || points.length === 0) return { status: 'not-configured' };
 
   const meanLat = points.reduce((s, p) => s + p[1], 0) / points.length;
   const radiusLat = radiusM / 111_320;
   const radiusLng = radiusM / (111_320 * Math.max(0.1, Math.cos((meanLat * Math.PI) / 180)));
   const range = corridorTileRange(points, Math.max(radiusLat, radiusLng));
-  if (!range) return null;
+  if (!range) return { status: 'region-miss' };
 
   try {
     const manifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
@@ -198,7 +285,7 @@ export async function fetchCorridorViaTiles(
           TILE_FORMAT_VERSION +
           ' — rebuild the tiles or update the app',
       );
-      return null;
+      return { status: 'unreachable' };
     }
 
     const bundle: WaysBundle = { nodes: new Map(), ways: [] };
@@ -224,14 +311,12 @@ export async function fetchCorridorViaTiles(
     await Promise.all(workers);
     // nothing found anywhere in the corridor area: region not built
     if (misses === keys.length) {
-      console.warn(
-        '[tiles] corridor region not covered by the tile build — falling back to public servers',
-      );
-      return null;
+      console.warn('[tiles] corridor region not covered by the tile build');
+      return { status: 'region-miss' };
     }
-    return bundle;
+    return { status: 'ok', bundle };
   } catch (err) {
     console.warn('[tiles] tile host unreachable:', err instanceof Error ? err.message : err);
-    return null; // unconfigured, unreachable or incompatible
+    return { status: 'unreachable' };
   }
 }

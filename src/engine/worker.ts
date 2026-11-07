@@ -12,6 +12,7 @@ import {
 } from '../lib/osm/corridor';
 import { getCachedCorridor, putCachedCorridor } from '../lib/osm/corridorCache';
 import { fetchCorridor, type WaysBundle } from '../lib/osm/overpass';
+import { TileDataError } from '../lib/osm/staticTiles';
 import { SnapIndex, type SnapResult } from '../lib/osm/snapIndex';
 import { setTileBaseUrlOverride } from '../lib/osm/staticTiles';
 import { buildGraph, type Graph } from './graph/build';
@@ -77,7 +78,10 @@ async function loadBundle(
       ways: bundle.ways,
     });
     return bundle;
-  } catch {
+  } catch (err) {
+    // tiles-only failures carry their reason to the UI; the rest stays generic
+    if (err instanceof TileDataError) throw err;
+    if (abort?.signal.aborted) throw err;
     return null;
   }
 }
@@ -97,9 +101,24 @@ async function attempt(
   my: number,
 ): Promise<'ok' | 'widen' | 'waypoint'> {
   post({ id, type: 'progress', stage: 0 });
-  const bundle = await loadBundle(points, radiusM, my, (stage) =>
-    post({ id, type: 'progress', stage }),
-  );
+  let bundle: WaysBundle | null = null;
+  try {
+    bundle = await loadBundle(points, radiusM, my, (stage) =>
+      post({ id, type: 'progress', stage }),
+    );
+  } catch (err) {
+    if (my !== token) return 'ok';
+    if (err instanceof TileDataError) {
+      post({
+        id,
+        type: 'error',
+        code: err.reason === 'region-miss' ? 'region_not_built' : 'corridor',
+      });
+      return 'ok';
+    }
+    post({ id, type: 'error', code: 'corridor' });
+    return 'ok';
+  }
   if (my !== token) return 'ok'; // superseded — value ignored
   if (!bundle) {
     post({ id, type: 'error', code: 'corridor' });
@@ -143,6 +162,10 @@ async function attempt(
         } catch {
           // elevation made the route infeasible — keep the flat route shown
         }
+      } else {
+        // elevation unavailable: the flat route stands — but the loading pill
+        // must still clear (a stuck "Loading elevation…" was the reported loop)
+        post({ id, type: 'ready', snaps: lastSnaps, radiusM });
       }
     }
   }

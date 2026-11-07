@@ -5,6 +5,9 @@ import { buildTilesFromXml, tileToJson } from '../../scripts/build-tiles/build-t
 import {
   TILE_DEG,
   TILE_FORMAT_VERSION,
+  resolveTileBaseUrl,
+  resetTileResolution,
+  setTileBaseUrl as _setTileBase,
   corridorTileRange,
   createTileMergeContext,
   fetchCorridorViaTiles,
@@ -151,10 +154,11 @@ describe('fetchCorridorViaTiles provider', () => {
     setTileBaseUrl('https://tiles.example/at/');
 
     try {
-      const bundle = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
-      expect(bundle).not.toBeNull();
-      expect(bundle!.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1003, 1004, 1005]);
-      const index = new SnapIndex(bundle!);
+      const result = await fetchCorridorViaTiles([[8.002, 47.0002]], 2000);
+      expect(result.status).toBe('ok');
+      const bundle = (result as { status: 'ok'; bundle: WaysBundle }).bundle;
+      expect(bundle.ways.map((w) => w.id).sort()).toEqual([1001, 1002, 1003, 1004, 1005]);
+      const index = new SnapIndex(bundle);
       expect(index.snap(8.0015, 47.0, 10)!.wayId).toBe(1001);
       // manifest + 4 corridor tiles requested (x 79..80, y 469..470)
       expect(fetchMock.mock.calls.length).toBe(5);
@@ -163,7 +167,7 @@ describe('fetchCorridorViaTiles provider', () => {
     }
   });
 
-  it('falls back (null) when no tile in the corridor area exists', async () => {
+  it('reports region-miss when no tile in the corridor area exists', async () => {
     const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
     vi.stubGlobal(
       'fetch',
@@ -176,27 +180,119 @@ describe('fetchCorridorViaTiles provider', () => {
     );
     setTileBaseUrl('https://tiles.example/empty/');
     try {
-      expect(await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).toBeNull();
+      expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('region-miss');
     } finally {
       setTileBaseUrl('');
     }
   });
 
-  it('falls back (null) on server errors other than 404', async () => {
+  it('reports unreachable on server errors other than 404', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('boom', { status: 500 })),
     );
     setTileBaseUrl('https://tiles.example/broken/');
     try {
-      expect(await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).toBeNull();
+      expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('unreachable');
     } finally {
       setTileBaseUrl('');
     }
   });
 
-  it('returns null when unconfigured', async () => {
+  it('reports not-configured when no URL is set', async () => {
     setTileBaseUrl('');
-    expect(await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).toBeNull();
+    expect((await fetchCorridorViaTiles([[8.002, 47.0002]], 2000)).status).toBe('not-configured');
+  });
+});
+
+describe('resolveTileBaseUrl auto-discovery', () => {
+  beforeAll(() => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+      removeItem: (k: string) => void storage.delete(k),
+    });
+    vi.stubGlobal('window', { location: { origin: 'https://app.test' } });
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const manifest = { formatVersion: TILE_FORMAT_VERSION, tileDeg: TILE_DEG };
+
+  function mockHost(probed: Record<string, unknown>): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const key = String(url)
+          .replace('https://app.test', '')
+          .replace(/\/manifest\.json$/, '')
+          .replace(/^\//, '');
+        if (key in probed) {
+          const value = probed[key]!;
+          return value === 404
+            ? new Response('nf', { status: 404 })
+            : new Response(JSON.stringify(value));
+        }
+        return new Response('nf', { status: 404 });
+      }),
+    );
+  }
+
+  it('discovers the first candidate with a valid manifest', async () => {
+    resetTileResolution();
+    mockHost({ tiles: manifest, 'mtb-tiles': 404, '/tiles': 404, '/mtb-tiles': 404 });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/tiles');
+  });
+
+  it('falls through to later candidates when the first is missing', async () => {
+    resetTileResolution();
+    mockHost({ tiles: 404, 'mtb-tiles': manifest });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/mtb-tiles');
+  });
+
+  it('rejects candidates with a wrong manifest format', async () => {
+    resetTileResolution();
+    mockHost({ tiles: { formatVersion: 1, tileDeg: TILE_DEG }, 'mtb-tiles': manifest });
+    expect(await resolveTileBaseUrl()).toBe('https://app.test/mtb-tiles');
+  });
+
+  it('returns null when nothing matches', async () => {
+    resetTileResolution();
+    mockHost({});
+    expect(await resolveTileBaseUrl()).toBeNull();
+  });
+
+  it('caches the session resolution (no re-probing)', async () => {
+    resetTileResolution();
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const key = String(url)
+        .replace('https://app.test', '')
+        .replace(/\/manifest\.json$/, '')
+        .replace(/^\//, '');
+      return key === 'tiles'
+        ? new Response(JSON.stringify(manifest))
+        : new Response('nf', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resolveTileBaseUrl();
+    const afterFirst = fetchMock.mock.calls.length;
+    await resolveTileBaseUrl();
+    await resolveTileBaseUrl();
+    expect(fetchMock.mock.calls.length).toBe(afterFirst); // no additional probes
+  });
+
+  it('explicit setting wins over discovery without probing', async () => {
+    resetTileResolution();
+    const fetchMock = vi.fn(async () => new Response('nf', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    setTileBaseUrl('https://elsewhere.example/at');
+    expect(await resolveTileBaseUrl()).toBe('https://elsewhere.example/at');
+    expect(fetchMock).not.toHaveBeenCalled();
+    setTileBaseUrl('');
+    resetTileResolution();
   });
 });

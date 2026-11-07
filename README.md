@@ -27,11 +27,14 @@ npm run build       # production build to dist/
 
 ## Self-hosted map data (recommended for restricted networks)
 
-The app normally loads corridor data from public Overpass servers (with an automatic fallback to
-`api.openstreetmap.org`). If those are blocked on your network — or you want instant loads — host
-the data yourself on any static webspace (e.g. IONOS). **No external tools needed** — the builder
-reads Geofabrik `.osm.pbf` extracts directly (the PBF reader ships as a precompiled binary through
-npm):
+By default the app loads corridor data from public Overpass servers (with an automatic fallback to
+`api.openstreetmap.org`). If a **tiles folder is found** — see the deployment section below — it
+becomes the **only** map-data source: a region that isn't in the build shows a clear error instead
+of silently grinding the (possibly blocked) public servers. If no tiles folder exists, the public
+chain is used as before.
+
+**No external tools needed** — the builder reads Geofabrik `.osm.pbf` extracts directly (the PBF
+reader ships as a precompiled binary through npm):
 
 1. **Download an extract and build tiles** (example: Austria — `curl -L` is required, Geofabrik
    redirects `-latest` URLs to dated files):
@@ -108,6 +111,37 @@ folder separately with `npx http-server dist/tiles -p 8080 --cors` and use
 `http://localhost:8080`.)
 
 Rebuild whenever you want fresher data (Geofabrik extracts update daily).
+
+## Deploying the app + tiles together (single webspace)
+
+One upload to your webspace root (e.g. IONOS) serves the app **and** the map data — the app
+auto-probes a `tiles/` or `mtb-tiles/` folder next to `index.html` (and at the domain root), so
+no setting is needed:
+
+```bash
+npm run build          # app -> dist/  (Vite clears dist/, so build the app first)
+node --max-old-space-size=6144 scripts/build-tiles/build-tiles.mjs   data/austria-latest.osm.pbf dist/tiles --region austria   # tiles -> dist/tiles/
+```
+
+Then upload the **contents of `dist/`** to your webspace root via SFTP/WinSCP:
+
+```
+index.html        <- the app
+assets/…          <- app bundle
+tiles/            <- manifest.json, t_*.json, .htaccess (CORS + gzip)
+```
+
+The layout is flexible: the app also probes `mtb-tiles/` next to `index.html` and
+`/tiles`, `/mtb-tiles` at the domain root — so the app can live in a subfolder while the tiles
+sit at the root. An explicit URL in the Route tab always wins over auto-discovery.
+
+Notes:
+
+- The generated `tiles/.htaccess` sets CORS + gzip; same-origin doesn't need CORS, but it keeps
+  the folder usable as a manual-URL target from other origins.
+- Ensure the domain has HTTPS active (IONOS: Domain → SSL) and verify:
+  `curl -sI https://yourdomain.at/tiles/manifest.json` → `200`.
+- Rebuild + re-upload the tiles folder when you want fresher OSM data.
 
 ## Attribution
 

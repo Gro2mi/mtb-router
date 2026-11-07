@@ -3,7 +3,7 @@
  * corridor + routing status. The heavy lifting happens in the engine worker;
  * this store mirrors its progress and feeds the UI.
  */
-import { getTileBaseUrl } from '../osm/staticTiles';
+import { resolveTileBaseUrl } from '../osm/staticTiles';
 import type { SnapResult } from '../osm/snapIndex';
 import { waypoints } from '../waypoints/store.svelte';
 import { getEngineHost } from '../../engine/host';
@@ -41,7 +41,7 @@ class PlanningState {
   /** bumped when the WORKER produces a route (E5 zoom-to-fit trigger) */
   routeVersion = $state(0);
   /** worker error code for the status pill */
-  errorCode = $state<'corridor' | 'no_route' | 'waypoint' | null>(null);
+  errorCode = $state<import('../../engine/protocol').WorkerErrorCode | null>(null);
 
   snapRadiusM = $state<number>(loadSnapRadius());
   /** rider difficulty settings (E4) — edited in the Difficulty tab, persisted (E6.3) */
@@ -75,6 +75,7 @@ class PlanningState {
   });
 
   private lastPoints: [number, number][] = [];
+  private lastPlannedSig = '';
   private lastRetry = 0;
   private rerouteTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -117,6 +118,7 @@ class PlanningState {
 
   retry(): void {
     this.errorCode = null;
+    this.lastPlannedSig = ''; // force a replan
     if (this.lastPoints.length > 0) this.ensureCorridor(this.lastPoints);
   }
 
@@ -126,18 +128,33 @@ class PlanningState {
   }
 
   /** called from an App effect whenever the raw waypoint polyline changes */
-  ensureCorridor(points: [number, number][]): void {
+  async ensureCorridor(points: [number, number][]): Promise<void> {
     this.lastPoints = points;
     if (points.length === 0) {
+      this.lastPlannedSig = '';
       this.phase = 'idle';
       this.route = null;
       this.errorCode = null;
       this.host.cancel();
       return;
     }
+    // snap updates reassign the waypoints array (identity) without moving it —
+    // replanning the identical polyline would abort the in-flight corridor
+    // fetch, which is never cached, and re-download everything (request spam)
+    const sig =
+      points.map((p) => `${p[0].toFixed(7)},${p[1].toFixed(7)}`).join(';') +
+      '|r' +
+      this.snapRadiusM;
+    // pure signature check — a fail-open on 'error' caused an infinite
+    // replan loop (error → effect re-run → replan → error …)
+    if (sig === this.lastPlannedSig) return;
+    this.lastPlannedSig = sig;
     this.phase = 'loading';
     this.errorCode = null;
-    this.host.plan(points, $state.snapshot(this.settings), getTileBaseUrl(), this.snapRadiusM);
+    // resolves the tile base: explicit setting, else auto-discovery on the
+    // same domain (probed once per session)
+    const tileBase = await resolveTileBaseUrl();
+    this.host.plan(points, $state.snapshot(this.settings), tileBase, this.snapRadiusM);
   }
 }
 

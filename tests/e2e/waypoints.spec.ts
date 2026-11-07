@@ -54,6 +54,10 @@ async function setupPage(page: Page): Promise<void> {
   await page.addInitScript((viewport) => {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
+  // hermetic: no tiles folder on this origin — the public chain is expected
+  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+    route.fulfill({ status: 404, body: 'not built' }),
+  );
   await page.goto('/');
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
   // the mocked corridor can beat the map style load — markers only exist once
@@ -118,26 +122,23 @@ test('identical re-plan issues no new Overpass requests (cache)', async ({ page 
 
   await canvas(page).click({ position: TAP_TRACK });
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(1, { timeout: 10_000 });
+  // wait for the corridor to finish AND be written to the cache (the pill
+  // hides when the worker reports ready, which happens after the cache put)
+  await expect(page.locator('[role="status"]')).toHaveCount(0, { timeout: 30_000 });
   await canvas(page).click({ position: TAP_PATH });
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2, { timeout: 10_000 });
+  await expect(page.locator('[role="status"]')).toHaveCount(0, { timeout: 30_000 });
 
-  // first undo/redo cycle: corridors may still be settling into the cache
-  await page.keyboard.press('Control+z');
-  await expect(page.locator('.mtbr-waypoint')).toHaveCount(1);
-  await page.keyboard.press('Control+Shift+z');
-  await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
-  await page.waitForTimeout(1000);
-  const settled = requestCount(page);
+  const baseline = requestCount(page);
 
-  // second cycle: both corridor keys are definitely cached now — the replans
-  // must issue zero new Overpass requests
+  // undo to one waypoint, redo back to two: same corridors -> cache hits only
   await page.keyboard.press('Control+z');
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(1);
   await page.keyboard.press('Control+Shift+z');
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
   await page.waitForTimeout(500);
 
-  expect(requestCount(page)).toBe(settled);
+  expect(requestCount(page)).toBe(baseline);
 });
 
 test('undo/redo returns to any prior waypoint state', async ({ page }) => {
@@ -214,10 +215,16 @@ test('route engine: two snapped waypoints produce a route with stats (E3)', asyn
 test('falls back to the main OSM API when all Overpass mirrors are unreachable', async ({
   page,
 }) => {
+  test.setTimeout(45_000);
   // simulate dead Overpass mirrors (instant network errors) and serve the
   // corridor through api.openstreetmap.org instead
   await page.route('**/api/interpreter*', (route) => route.abort());
   await abortElevation(page);
+  // hermetic: block the local dist/tiles build so this test exercises the
+  // public chain with the fixture
+  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+    route.fulfill({ status: 404, body: 'not built' }),
+  );
   const osmApiXml = readFileSync(
     join(import.meta.dirname, '..', 'fixtures', 'osm-api-map.xml'),
     'utf8',
@@ -237,7 +244,7 @@ test('falls back to the main OSM API when all Overpass mirrors are unreachable',
 
   await canvas(page).click({ position: TAP_TRACK });
   await expect(page.locator('.mtbr-waypoint[data-snapped="true"]')).toHaveCount(1, {
-    timeout: 20_000,
+    timeout: 35_000,
   });
   expect(osmApiRequests).toBeGreaterThan(0);
 });
@@ -289,6 +296,60 @@ test('self-hosted tiles serve the corridor without touching Overpass or the OSM 
   await page.addInitScript((viewport) => {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
     localStorage.setItem('mtbr.tileBaseUrl.v1', 'https://tiles.test');
+  }, SEED_VIEWPORT);
+
+  await page.goto('/');
+  await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Planning mode' }).click();
+
+  await canvas(page).click({ position: TAP_TRACK });
+  await expect(page.locator('.mtbr-waypoint[data-snapped="true"]')).toHaveCount(1, {
+    timeout: 10_000,
+  });
+  expect(publicRequests).toBe(0);
+});
+
+test('auto-discovers a tiles folder next to the app (no URL setting)', async ({ page }) => {
+  const fixtureXml = readFileSync(
+    join(import.meta.dirname, '..', 'fixtures', 'osm-api-map.xml'),
+    'utf8',
+  );
+  const { tiles } = await buildTilesFromXml(fixtureXml);
+
+  let publicRequests = 0;
+  await page.route('**/api/interpreter*', (route) => {
+    publicRequests++;
+    return route.abort();
+  });
+  await page.route('**/api.openstreetmap.org/**', (route) => {
+    publicRequests++;
+    return route.abort();
+  });
+  await page.route('**/elevation-tiles-prod/**', (route) => route.abort());
+  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/manifest.json')) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ formatVersion: 2, tileDeg: 0.1, region: 'e2e' }),
+      });
+      return;
+    }
+    const key = url.pathname.split('/').pop()!.replace('.json', '');
+    const tile = tiles.get(key);
+    if (tile) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(tileToJson(tile)),
+      });
+    } else {
+      await route.fulfill({ status: 404, body: 'not found' });
+    }
+  });
+
+  // NOTE: no mtbr.tileBaseUrl.v1 — the app must find the folder itself
+  await page.addInitScript((viewport) => {
+    localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
 
   await page.goto('/');

@@ -334,6 +334,7 @@ widening loop (2→5→10 km) tripled it, and the route waited for a 10 s elevat
 also blocked) before displaying anything.
 
 **Fixes:**
+
 - Overpass mirrors now **race in parallel** (Promise.any, first success wins, losers aborted)
   with one timeout per stage (15 s trails / 45 s roads) instead of escalating per-mirror waits;
 - per-mirror **cooldown** (5 min) after a failure plus a global **Overpass cooldown** — once all
@@ -358,3 +359,36 @@ requests. 181 unit + 26 e2e green.
 **Recommendation for blocked networks:** self-hosted tiles (stage 0) remain the only instant
 path — rebuild tiles with the current builder (format v2) and set the URL in the Route tab;
 diagnostics now warn when the build is stale.
+
+---
+
+## Tiles-only mode + stuck-loading fix (2026-11-07, user report)
+
+**User request:** disable all other tile providers — the public-server fallback kept the planner in
+a loading loop on the blocked network even after the speed fixes.
+
+**Behavior now:** when a tile host is resolved (explicit URL **or auto-discovery**), it is the
+**only** corridor data source: a region miss or unreachable host surfaces a clear error instead of
+grinding the public chain. The public chain (Overpass race → OSM API) runs only when no tile host
+exists. `fetchCorridorViaTiles` returns a `TilesResult` (`ok / not-configured / region-miss /
+unreachable`); region misses surface as the new `region_not_built` error code with a dedicated
+message in the status pill.
+
+**Auto-discovery:** the app probes `tiles/` + `mtb-tiles/` next to `index.html` and at the domain
+root for a manifest matching the expected format (once per session, cached); an explicit URL
+setting still wins.
+
+**Stuck-loading fix (the reported loop):** the route-first reorder left the status pill stuck at
+"Loading elevation…" forever when the elevation fetch failed — no terminal message was posted
+after the null elevation, so `phase` stayed `loading` until the next plan flipped it to "Loading
+map data…" → the visible loop. Fixed by posting a terminal `ready` after a null elevation (the
+flat route stands). Also fixed: the corridor-dedupe signature check failed open while an error
+pill was showing → every ready/applySnaps re-fired a full replan of the identical polyline
+(infinite plan→widen→error→replan).
+
+**Deploy docs:** README gained a "Deploying the app + tiles together" section (build app → build
+tiles into `dist/tiles/` → upload one folder; auto-discovery layout notes, verification curl).
+
+**E2E hermeticity:** tests that expect the public-chain fixture now block the local tile build
+(`dist/tiles` is served by `vite preview` and auto-discovered — tests were accidentally running
+against real Austrian data, where the fixture clicks fall in Lake Constance). 187 unit + 29 e2e.

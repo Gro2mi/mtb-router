@@ -40,7 +40,7 @@
   "clear": "Clear",
   "snap_radius": "Snap radius",
   "tiles_url_label": "Self-hosted map data URL",
-  "tiles_url_hint": "Base URL of your tile build (contains manifest.json). Leave empty to use public Overpass servers.",
+  "tiles_url_hint": "Leave empty to auto-detect a tiles folder next to the app (tiles/ or mtb-tiles/).",
   "tiles_url_save": "Save",
   "delete_waypoint": "Delete waypoint",
   "insert_via_here": "Insert via point here",
@@ -106,5 +106,6 @@
   "preset_add": "Save current",
   "preset_name_placeholder": "Preset name…",
   "preset_add_confirm": "Save",
-  "preset_delete": "Delete preset {name}"
+  "preset_delete": "Delete preset {name}",
+  "error_region_not_built": "This region is not in your map-data build"
 }

@@ -24,6 +24,11 @@ const TAP_PATH = { x: BASE.x, y: BASE.y - 169 };
 const canvas = (page: Page) => page.locator('canvas.maplibregl-canvas');
 
 async function setupWithRoute(page: Page): Promise<number> {
+  const dbg: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' || m.text().includes('[tiles]')) dbg.push(m.text().slice(0, 200));
+  });
+  page.on('pageerror', (e) => dbg.push('[pageerror] ' + e.message.slice(0, 200)));
   let overpassRequests = 0;
   await page.route('**/api/interpreter*', async (route) => {
     overpassRequests++;
@@ -38,13 +43,29 @@ async function setupWithRoute(page: Page): Promise<number> {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
 
+  // hermetic: no tiles folder on this origin — the public chain is expected
+  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+    route.fulfill({ status: 404, body: 'not built' }),
+  );
   await page.goto('/');
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Planning mode' }).click();
   await canvas(page).click({ position: TAP_TRACK });
   await canvas(page).click({ position: TAP_PATH });
+  await page.waitForTimeout(3000);
+  console.log('DBG-early:', dbg.join(' ~ ') || '(none)');
+  const alertText = await page.evaluate(
+    () => document.querySelector('[role="alert"]')?.textContent ?? '(no alert)',
+  );
+  console.log('DBG-ALERT:', alertText);
   await expect(page.getByTestId('route-stats')).toBeVisible({ timeout: 30_000 });
 
+  await page.waitForTimeout(2000);
+  console.log('DBG:', dbg.join(' ~ ') || '(none)');
+  const snapped = await page
+    .locator('.mtbr-waypoint')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-snapped')));
+  console.log('DBG-SNAPPED:', JSON.stringify(snapped));
   await page.getByRole('button', { name: 'Difficulty' }).click();
   await expect(page.getByTestId('difficulty-panel')).toBeVisible();
   return overpassRequests;

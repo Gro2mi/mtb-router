@@ -32,6 +32,10 @@ async function planRoute(page: Page): Promise<void> {
     localStorage.setItem('mtbr.viewport.v1', JSON.stringify(viewport));
   }, SEED_VIEWPORT);
 
+  // hermetic: no tiles folder on this origin — the public chain is expected
+  await page.route(/[/]tiles[/](manifest[.]json|t_[0-9]+_[0-9]+[.]json)$/, (route) =>
+    route.fulfill({ status: 404, body: 'not built' }),
+  );
   await page.goto('/');
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Planning mode' }).click();

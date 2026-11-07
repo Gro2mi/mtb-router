@@ -8,7 +8,7 @@
 import { buildStageQueries, type CorridorPoint } from './corridor';
 import { isRoutable, parseWayTags, type WayAttrs } from './tags';
 import { fetchCorridorViaOsmApi } from './osmApiFallback';
-import { fetchCorridorViaTiles } from './staticTiles';
+import { fetchCorridorViaTiles, TileDataError } from './staticTiles';
 
 export interface ParsedWay {
   id: number;
@@ -30,11 +30,13 @@ export const OVERPASS_MIRRORS: readonly string[] = [
 ];
 
 /**
- * Single timeout per stage: all mirrors race in parallel (first success
- * wins, losers aborted). On networks that black-hole Overpass hosts this
- * bounds the waste to one window instead of escalating per-mirror timeouts.
+ * Single timeout per stage with STAGGERED mirror starts: the next mirror is
+ * only contacted when the previous one has not answered within the stagger
+ * window. Healthy networks send exactly one request per stage; black-holed
+ * hosts cost one stagger step each, bounded by the stage timeout.
  */
 const STAGE_TIMEOUTS_MS = [15_000, 45_000]; // stage 1 (trails), stage 2 (roads)
+const MIRROR_STAGGER_MS = 2_000;
 const MIRROR_COOLDOWN_MS = 5 * 60_000;
 const OVERPASS_COOLDOWN_MS = 5 * 60_000;
 /** Guard against absurd corridor responses (PLAN NFR-3 memory budget). */
@@ -81,29 +83,45 @@ async function fetchQuery(
   signal?.addEventListener('abort', onOuterAbort, { once: true });
 
   try {
-    const attempts = mirrors.map(async (mirror, i) => {
+    const attempts = mirrors.map((mirror, i) => {
       const controller = controllers[i]!;
-      try {
-        const res = await fetch(mirror, {
-          method: 'POST',
-          body: query,
-          headers: { 'Content-Type': 'text/plain' },
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`Overpass ${res.status} at ${new URL(mirror).host}`);
-        return (await res.json()) as unknown;
-      } catch (err) {
-        // a timed-out / errored mirror is skipped for the cooldown window;
-        // a superseded plan's abort is not a mirror failure
-        if (!outerAborted) mirrorCooldownUntil.set(mirror, Date.now() + MIRROR_COOLDOWN_MS);
-        throw err;
-      }
+      return new Promise<unknown>((resolve, reject) => {
+        const startTimer = setTimeout(() => {
+          if (outerAborted) {
+            reject(new DOMException('aborted', 'AbortError'));
+            return;
+          }
+          fetch(mirror, {
+            method: 'POST',
+            body: query,
+            headers: { 'Content-Type': 'text/plain' },
+            signal: controller.signal,
+          })
+            .then(async (res) => {
+              if (!res.ok) throw new Error(`Overpass ${res.status} at ${new URL(mirror).host}`);
+              resolve((await res.json()) as unknown);
+            })
+            .catch((err: unknown) => {
+              // a timed-out / errored mirror is skipped for the cooldown window;
+              // a superseded plan's abort is not a mirror failure
+              if (!outerAborted) mirrorCooldownUntil.set(mirror, Date.now() + MIRROR_COOLDOWN_MS);
+              reject(err instanceof Error ? err : new Error(String(err)));
+            });
+        }, i * MIRROR_STAGGER_MS);
+        signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(startTimer);
+            reject(new DOMException('aborted', 'AbortError'));
+          },
+          { once: true },
+        );
+      });
     });
     const json = await Promise.any(attempts);
-    // stop the losing mirrors
-    if (!outerAborted) {
-      for (const c of controllers) c.abort();
-    }
+    // stop staggered starts + in-flight losers
+    outerAborted = true;
+    for (const c of controllers) c.abort();
     return json;
   } catch (err) {
     if (signal?.aborted || outerAborted) throw err;
@@ -167,14 +185,20 @@ export async function fetchCorridor(
   onStage: StageReporter = () => {},
   signal?: AbortSignal,
 ): Promise<WaysBundle> {
-  // stage 0: self-hosted static tiles (configured + region built) — fastest
-  // path and immune to third-party server blocks
+  // stage 0: self-hosted static tiles — fastest path and immune to
+  // third-party server blocks. When a tile host is resolved it is the ONLY
+  // provider (user request): a miss is an error, not a reason to grind the
+  // potentially-blocked public chain.
   onStage(0);
-  const tiled = await fetchCorridorViaTiles(points, radiusM, signal);
-  if (tiled) return compactBundle(tiled);
+  const result = await fetchCorridorViaTiles(points, radiusM, signal);
+  if (result.status === 'ok') return compactBundle(result.bundle);
+  if (result.status === 'region-miss' || result.status === 'unreachable') {
+    throw new TileDataError(result.status);
+  }
 
-  // a network that black-holes Overpass burns the full stage timeout once;
-  // afterwards Overpass is skipped entirely for the cooldown window
+  // no tile host configured → public chain: a network that black-holes
+  // Overpass burns the stage timeout once; afterwards Overpass is skipped
+  // entirely for the cooldown window
   const overpassAllowed = Date.now() >= overpassBlockedUntil;
   const queries = overpassAllowed ? buildStageQueries(points, radiusM) : [];
   const bundle: WaysBundle = { nodes: new Map(), ways: [] };
