@@ -24,8 +24,8 @@ describe('planBoxes', () => {
   it('respects the max box edge size', () => {
     const boxes = planBoxes([[8.0, 47.0]], 0.05);
     for (const box of boxes) {
-      expect(box.east - box.west).toBeLessThanOrEqual(0.012 + 1e-9);
-      expect(box.north - box.south).toBeLessThanOrEqual(0.012 + 1e-9);
+      expect(box.east - box.west).toBeLessThanOrEqual(0.02 + 1e-9);
+      expect(box.north - box.south).toBeLessThanOrEqual(0.02 + 1e-9);
     }
   });
 
@@ -46,7 +46,7 @@ describe('planBoxes', () => {
   it('caps the box count on very long corridors', () => {
     const points: [number, number][] = [];
     for (let i = 0; i < 200; i++) points.push([7.0 + i * 0.02, 47.0]);
-    expect(planBoxes(points, 0.02).length).toBeLessThanOrEqual(24);
+    expect(planBoxes(points, 0.02).length).toBeLessThanOrEqual(64);
   });
 });
 

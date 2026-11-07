@@ -24,6 +24,32 @@ const TAP_TRACK = { x: BASE.x, y: BASE.y + 49 };
 const TAP_PATH = { x: BASE.x, y: BASE.y - 169 };
 const canvas = (page: Page) => page.locator('canvas.maplibregl-canvas');
 
+/**
+ * The engine posts the flat route first, then the elevation-refined one —
+ * geometry (and even the path) can shift between the two. Waits until the
+ * rendered route data has been stable for two consecutive polls.
+ */
+async function waitForStableRoute(page: Page): Promise<void> {
+  const read = async (): Promise<string | null> =>
+    page.evaluate(async () => {
+      const m = (window as unknown as Record<string, unknown>).__mtbrMap as
+        | {
+            getSource(
+              id: string,
+            ):
+              | { getData(): Promise<{ features: { geometry: { coordinates: unknown } }[] }> }
+              | undefined;
+          }
+        | undefined;
+      if (!m) return null;
+      const gj = await m.getSource('mtbr-route')?.getData();
+      return gj ? JSON.stringify(gj.features.map((f) => f.geometry.coordinates)) : null;
+    });
+  await expect.poll(async () => (await read()) !== null, { timeout: 10_000 }).toBe(true);
+  const once = await read();
+  await expect.poll(async () => (await read()) === once, { timeout: 10_000 }).toBe(true);
+}
+
 /** serve a terrarium PNG whose elevation rises from south (500 m) to north (700 m) */
 async function mockElevation(page: Page): Promise<void> {
   const pngB64 = await page.evaluate(() => {
@@ -145,6 +171,7 @@ test('route renders per-segment difficulty colors', async ({ page }) => {
 
 test('elevation profile renders and scrubs to a map marker', async ({ page }) => {
   await planRoute(page);
+  await waitForStableRoute(page);
 
   const profile = page.getByTestId('elevation-profile');
   await expect(profile).toBeVisible({ timeout: 10_000 });
@@ -164,21 +191,10 @@ test('elevation profile renders and scrubs to a map marker', async ({ page }) =>
 test('clicking the route shows a segment popup and highlights the profile', async ({ page }) => {
   await planRoute(page);
 
-  // wait for the render pipeline to push the route into the GeoJSON source
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(async () => {
-          const m = (window as unknown as Record<string, unknown>).__mtbrMap as
-            | { getSource(id: string): { getData(): Promise<{ features: unknown[] }> } | undefined }
-            | undefined;
-          if (!m) return 0;
-          const gj = await m.getSource('mtbr-route')?.getData();
-          return gj?.features.length ?? 0;
-        }),
-      { timeout: 10_000 },
-    )
-    .toBeGreaterThan(0);
+  // leave plan mode: clicking the line must not add a waypoint
+  await page.getByRole('button', { name: 'Planning mode' }).click();
+
+  await waitForStableRoute(page);
 
   // project a route vertex to pixels and click exactly on the line
   const point = await page.evaluate(async () => {
@@ -192,10 +208,10 @@ test('clicking the route shows a segment popup and highlights the profile', asyn
     const coords = gj.features[1]!.geometry.coordinates as [number, number][];
     const mid = coords[Math.floor(coords.length / 2)]!;
     const p = m.project(mid);
-    return { x: p.x, y: p.y };
+    return { x: Math.round(p.x), y: Math.round(p.y) };
   });
 
-  await canvas(page).click({ position: { x: Math.round(point.x), y: Math.round(point.y) } });
+  await canvas(page).click({ position: point });
 
   const popup = page.locator('.maplibregl-popup');
   await expect(popup).toBeVisible({ timeout: 5_000 });

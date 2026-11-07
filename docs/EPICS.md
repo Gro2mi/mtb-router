@@ -210,19 +210,20 @@ computes routes under the direction-aware difficulty model (PLAN §7).
 > plus a separate dashed gray layer for walking edges (line-dasharray is not data-driven);
 > zoom-to-fit on worker routes only (routeVersion counter), reduced-motion respected.
 > (5.2) segment popup on line click (class/surface/MTB S-level tagged-vs-estimated/walking note)
-> + difficulty-split chips + walking km + max slope in the Route tab. (5.3) canvas elevation
-> profile colored per segment, pointer scrub ↔ map marker two-way sync
-> (`src/lib/profile/profileData.ts` pure builder, `profileState` in
-> `src/lib/state/profile.svelte.ts`), highlight band from segment clicks.
-> **Bugs found:** (a) worker never computed `seg.dz` after elevation attach (masked by manual test
-> setup) — fixed in the worker pipeline; (b) **elevation abort poisoning**: a superseded plan's
-> AbortError marked the whole session degraded — fixed to ignore AbortError, timeout raised to 10 s;
-> (c) **maplibre v6 Marker._update runs inside addTo** and reads the unset lngLat — the throw lands
-> AFTER appendChild, so `setLngLat` must be called BEFORE `addTo` (six orphaned scrub markers were
-> the symptom); (d) the worker route can beat the map 'load' event, so e2e must poll for layers.
-> Tests: e5 unit suite (colors, profile builder incl. joint dedupe + interpolation, degraded flag),
-> 5 e2e (colors/walk layer, profile scrub → map dot, segment popup via projected click, legend +
-> breakdown, custom presets). 176 unit + 26 e2e green.
+>
+> - difficulty-split chips + walking km + max slope in the Route tab. (5.3) canvas elevation
+>   profile colored per segment, pointer scrub ↔ map marker two-way sync
+>   (`src/lib/profile/profileData.ts` pure builder, `profileState` in
+>   `src/lib/state/profile.svelte.ts`), highlight band from segment clicks.
+>   **Bugs found:** (a) worker never computed `seg.dz` after elevation attach (masked by manual test
+>   setup) — fixed in the worker pipeline; (b) **elevation abort poisoning**: a superseded plan's
+>   AbortError marked the whole session degraded — fixed to ignore AbortError, timeout raised to 10 s;
+>   (c) **maplibre v6 Marker.\_update runs inside addTo** and reads the unset lngLat — the throw lands
+>   AFTER appendChild, so `setLngLat` must be called BEFORE `addTo` (six orphaned scrub markers were
+>   the symptom); (d) the worker route can beat the map 'load' event, so e2e must poll for layers.
+>   Tests: e5 unit suite (colors, profile builder incl. joint dedupe + interpolation, degraded flag),
+>   5 e2e (colors/walk layer, profile scrub → map dot, segment popup via projected click, legend +
+>   breakdown, custom presets). 176 unit + 26 e2e green.
 
 **Goal:** Present the route so the rider can judge it — line, numbers, profile.
 

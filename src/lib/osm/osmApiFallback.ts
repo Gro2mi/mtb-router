@@ -12,10 +12,11 @@ import type { WaysBundle } from './overpass';
 
 const OSM_API_MAP = 'https://api.openstreetmap.org/api/0.6/map';
 
-/** Box edge in degrees (~1.3 km lat) — small enough for dense Alpine terrain. */
-const MAX_BOX_DEG = 0.012;
+/** Box edge in degrees (~2.2 km lat) — the 50 k-node limit only bites in the
+ *  densest terrain, where quadrant-splitting still applies per box. */
+const MAX_BOX_DEG = 0.02;
 /** Hard cap on requests per corridor (coverage degrades gracefully beyond). */
-const MAX_BOXES = 24;
+const MAX_BOXES = 64;
 /** api.openstreetmap.org policy: max 2 req/s. */
 const REQUEST_SPACING_MS = 550;
 
@@ -37,9 +38,18 @@ function splitBox(box: Bbox): Bbox[] {
   ];
 }
 
-/** Cover the padded polyline with capped-size boxes (pure, unit-tested). */
+/** Cover the padded polyline with capped-size boxes (pure, unit-tested).
+ *  Boxes are deduplicated across segments — consecutive anchors share grid
+ *  cells, and without dedupe the cap would starve the last segments. */
 export function planBoxes(points: [number, number][], radiusDeg: number): Bbox[] {
+  const seen = new Set<string>();
   const boxes: Bbox[] = [];
+  const push = (box: Bbox): void => {
+    const key = `${box.west.toFixed(5)},${box.south.toFixed(5)},${box.east.toFixed(5)},${box.north.toFixed(5)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    boxes.push(box);
+  };
   const anchors: [number, number][] = points.length > 0 ? points : [[0, 0]];
   for (let i = 0; i + 1 < anchors.length || anchors.length === 1; i++) {
     const a = anchors[i]!;
@@ -52,7 +62,7 @@ export function planBoxes(points: [number, number][], radiusDeg: number): Bbox[]
     const rows = Math.max(1, Math.ceil((north - south) / MAX_BOX_DEG));
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
-        boxes.push({
+        push({
           west: west + ((east - west) * c) / cols,
           east: west + ((east - west) * (c + 1)) / cols,
           south: south + ((north - south) * r) / rows,

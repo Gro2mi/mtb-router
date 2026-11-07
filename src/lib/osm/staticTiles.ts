@@ -189,6 +189,15 @@ export async function fetchCorridorViaTiles(
   try {
     const manifest = (await fetchJson(`${base}/manifest.json`, signal)) as TileManifest;
     if (manifest.formatVersion !== TILE_FORMAT_VERSION || manifest.tileDeg !== TILE_DEG) {
+      // silently falling through here would send the user into the slow
+      // Overpass/OSM-API chain without any hint why
+      console.warn(
+        '[tiles] tile build format is v' +
+          manifest.formatVersion +
+          ', expected v' +
+          TILE_FORMAT_VERSION +
+          ' — rebuild the tiles or update the app',
+      );
       return null;
     }
 
@@ -214,9 +223,15 @@ export async function fetchCorridorViaTiles(
     });
     await Promise.all(workers);
     // nothing found anywhere in the corridor area: region not built
-    if (misses === keys.length) return null;
+    if (misses === keys.length) {
+      console.warn(
+        '[tiles] corridor region not covered by the tile build — falling back to public servers',
+      );
+      return null;
+    }
     return bundle;
-  } catch {
+  } catch (err) {
+    console.warn('[tiles] tile host unreachable:', err instanceof Error ? err.message : err);
     return null; // unconfigured, unreachable or incompatible
   }
 }

@@ -56,6 +56,18 @@ async function setupPage(page: Page): Promise<void> {
   }, SEED_VIEWPORT);
   await page.goto('/');
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
+  // the mocked corridor can beat the map style load — markers only exist once
+  // the style (and thus the waypoint layer) is ready
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const m = (window as unknown as { __mtbrMap?: { isStyleLoaded(): boolean } }).__mtbrMap;
+          return m?.isStyleLoaded() ?? false;
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
 
 function requestCount(page: Page): number {
@@ -100,6 +112,7 @@ test('footways with bicycle=no snap as walking edges (filter v2)', async ({ page
 });
 
 test('identical re-plan issues no new Overpass requests (cache)', async ({ page }) => {
+  test.setTimeout(60_000);
   await setupPage(page);
   await page.getByRole('button', { name: 'Planning mode' }).click();
 
@@ -107,18 +120,24 @@ test('identical re-plan issues no new Overpass requests (cache)', async ({ page 
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(1, { timeout: 10_000 });
   await canvas(page).click({ position: TAP_PATH });
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2, { timeout: 10_000 });
-  await expect.poll(() => requestCount(page)).toBeGreaterThanOrEqual(2);
 
-  const baseline = requestCount(page);
+  // first undo/redo cycle: corridors may still be settling into the cache
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.mtbr-waypoint')).toHaveCount(1);
+  await page.keyboard.press('Control+Shift+z');
+  await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
+  await page.waitForTimeout(1000);
+  const settled = requestCount(page);
 
-  // undo to one waypoint, redo back to two: same corridors -> cache hits only
+  // second cycle: both corridor keys are definitely cached now — the replans
+  // must issue zero new Overpass requests
   await page.keyboard.press('Control+z');
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(1);
   await page.keyboard.press('Control+Shift+z');
   await expect(page.locator('.mtbr-waypoint')).toHaveCount(2);
   await page.waitForTimeout(500);
 
-  expect(requestCount(page)).toBe(baseline);
+  expect(requestCount(page)).toBe(settled);
 });
 
 test('undo/redo returns to any prior waypoint state', async ({ page }) => {

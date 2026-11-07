@@ -30,57 +30,88 @@ export const OVERPASS_MIRRORS: readonly string[] = [
 ];
 
 /**
- * Attempt timeouts escalate: a first contact gets a short window so networks
- * that black-hole Overpass hosts fail over quickly, later attempts allow time
- * for heavy but healthy queries.
+ * Single timeout per stage: all mirrors race in parallel (first success
+ * wins, losers aborted). On networks that black-hole Overpass hosts this
+ * bounds the waste to one window instead of escalating per-mirror timeouts.
  */
-const ATTEMPT_TIMEOUTS_MS = [10_000, 25_000, 45_000];
+const STAGE_TIMEOUTS_MS = [15_000, 45_000]; // stage 1 (trails), stage 2 (roads)
+const MIRROR_COOLDOWN_MS = 5 * 60_000;
+const OVERPASS_COOLDOWN_MS = 5 * 60_000;
 /** Guard against absurd corridor responses (PLAN NFR-3 memory budget). */
 const MAX_ELEMENTS = 1_500_000;
 
-/** Mirror that answered most recently — tried first while it keeps working. */
-let preferredMirror: string | null = null;
+/** Mirrors that failed recently are skipped for the cooldown window. */
+const mirrorCooldownUntil = new Map<string, number>();
+/** When every mirror is in cooldown, Overpass is skipped entirely. */
+let overpassBlockedUntil = 0;
 
-export type CorridorStage = 0 | 1 | 2 | 3; // 0 = self-hosted tiles, 3 = OSM API fallback
+export function resetOverpassState(): void {
+  mirrorCooldownUntil.clear();
+  overpassBlockedUntil = 0;
+}
 
-export type StageReporter = (stage: CorridorStage) => void;
+export function isOverpassBlocked(): boolean {
+  return Date.now() < overpassBlockedUntil;
+}
 
-async function fetchQuery(query: string, signal?: AbortSignal): Promise<unknown> {
-  const order = preferredMirror
-    ? [preferredMirror, ...OVERPASS_MIRRORS.filter((m) => m !== preferredMirror)]
-    : [...OVERPASS_MIRRORS];
-  let lastError: unknown = new Error('no mirrors configured');
+function availableMirrors(now: number): string[] {
+  return OVERPASS_MIRRORS.filter((m) => (mirrorCooldownUntil.get(m) ?? 0) <= now);
+}
 
-  for (let attempt = 0; attempt < order.length; attempt++) {
-    const mirror = order[attempt]!;
-    const timeoutMs =
-      preferredMirror === mirror
-        ? ATTEMPT_TIMEOUTS_MS[2]! // trusted mirror gets the full window
-        : ATTEMPT_TIMEOUTS_MS[Math.min(attempt, ATTEMPT_TIMEOUTS_MS.length - 1)]!;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const onOuterAbort = () => controller.abort();
-    signal?.addEventListener('abort', onOuterAbort, { once: true });
-    try {
-      const res = await fetch(mirror, {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`Overpass ${res.status} at ${new URL(mirror).host}`);
-      preferredMirror = mirror;
-      return (await res.json()) as unknown;
-    } catch (err) {
-      lastError = err;
-      if (signal?.aborted) throw err;
-      // try the next mirror
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onOuterAbort);
+async function fetchQuery(
+  query: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const now = Date.now();
+  const mirrors = availableMirrors(now);
+  if (mirrors.length === 0) throw new Error('all Overpass mirrors cooling down');
+
+  const controllers = mirrors.map(() => new AbortController());
+  // distinguishes a superseded plan's abort from a timeout abort — the
+  // former is not a mirror failure and must not set the cooldown
+  let outerAborted = false;
+  const onOuterAbort = (): void => {
+    outerAborted = true;
+    for (const c of controllers) c.abort();
+  };
+  const timer = setTimeout(() => {
+    for (const c of controllers) c.abort();
+  }, timeoutMs);
+  signal?.addEventListener('abort', onOuterAbort, { once: true });
+
+  try {
+    const attempts = mirrors.map(async (mirror, i) => {
+      const controller = controllers[i]!;
+      try {
+        const res = await fetch(mirror, {
+          method: 'POST',
+          body: query,
+          headers: { 'Content-Type': 'text/plain' },
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Overpass ${res.status} at ${new URL(mirror).host}`);
+        return (await res.json()) as unknown;
+      } catch (err) {
+        // a timed-out / errored mirror is skipped for the cooldown window;
+        // a superseded plan's abort is not a mirror failure
+        if (!outerAborted) mirrorCooldownUntil.set(mirror, Date.now() + MIRROR_COOLDOWN_MS);
+        throw err;
+      }
+    });
+    const json = await Promise.any(attempts);
+    // stop the losing mirrors
+    if (!outerAborted) {
+      for (const c of controllers) c.abort();
     }
+    return json;
+  } catch (err) {
+    if (signal?.aborted || outerAborted) throw err;
+    throw err instanceof AggregateError ? (err.errors[0] ?? err) : err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onOuterAbort);
   }
-  throw lastError;
 }
 
 interface OverpassElement {
@@ -105,6 +136,8 @@ export function parseStage(json: unknown, bundle: WaysBundle): void {
     }
     if (el.type !== 'way') continue;
     if (!Array.isArray(el.nodes) || el.nodes.length < 2) continue;
+    // defensive: stages/mirrors could theoretically overlap
+    if (bundle.ways.some((w) => w.id === el.id)) continue;
     const attrs = parseWayTags(el.tags);
     if (!isRoutable(attrs)) continue;
     bundle.ways.push({ id: el.id, nodeIds: el.nodes.slice(), attrs });
@@ -124,6 +157,10 @@ export function compactBundle(bundle: WaysBundle): WaysBundle {
   return { nodes, ways: bundle.ways };
 }
 
+export type CorridorStage = 0 | 1 | 2 | 3; // 0 = self-hosted tiles, 3 = OSM API fallback
+
+export type StageReporter = (stage: CorridorStage) => void;
+
 export async function fetchCorridor(
   points: CorridorPoint[],
   radiusM: number,
@@ -136,21 +173,28 @@ export async function fetchCorridor(
   const tiled = await fetchCorridorViaTiles(points, radiusM, signal);
   if (tiled) return compactBundle(tiled);
 
-  const queries = buildStageQueries(points, radiusM);
+  // a network that black-holes Overpass burns the full stage timeout once;
+  // afterwards Overpass is skipped entirely for the cooldown window
+  const overpassAllowed = Date.now() >= overpassBlockedUntil;
+  const queries = overpassAllowed ? buildStageQueries(points, radiusM) : [];
   const bundle: WaysBundle = { nodes: new Map(), ways: [] };
-  try {
-    for (let i = 0; i < queries.length; i++) {
-      onStage((i + 1) as 1 | 2);
-      const json = await fetchQuery(queries[i]!, signal);
-      parseStage(json, bundle);
+  if (overpassAllowed) {
+    try {
+      for (let i = 0; i < queries.length; i++) {
+        onStage((i + 1) as 1 | 2);
+        const json = await fetchQuery(queries[i]!, STAGE_TIMEOUTS_MS[i] ?? 45_000, signal);
+        parseStage(json, bundle);
+      }
+      return compactBundle(bundle);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      overpassBlockedUntil = Date.now() + OVERPASS_COOLDOWN_MS;
     }
-  } catch (err) {
-    if (signal?.aborted) throw err;
-    // every mirror failed (unreachable / overloaded) — the main OSM API is
-    // hosted on different infrastructure and covers the same ground
-    onStage(3);
-    const fallback = await fetchCorridorViaOsmApi(points, radiusM, signal);
-    return compactBundle(fallback);
   }
-  return compactBundle(bundle);
+
+  // every mirror failed / cooling down — the main OSM API is hosted on
+  // different infrastructure and covers the same ground
+  onStage(3);
+  const fallback = await fetchCorridorViaOsmApi(points, radiusM, signal);
+  return compactBundle(fallback);
 }

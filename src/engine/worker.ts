@@ -15,7 +15,7 @@ import { fetchCorridor, type WaysBundle } from '../lib/osm/overpass';
 import { SnapIndex, type SnapResult } from '../lib/osm/snapIndex';
 import { setTileBaseUrlOverride } from '../lib/osm/staticTiles';
 import { buildGraph, type Graph } from './graph/build';
-import { loadElevations } from './elevation/terrarium';
+import { isElevationDegraded, loadElevations } from './elevation/terrarium';
 import { planRoute } from './router/route';
 import { RouteBlockedError } from './router/astar';
 import type { EngineStage, HostToWorker, RiderSettings, WorkerToHost } from './protocol';
@@ -108,18 +108,6 @@ async function attempt(
   buildState(bundle);
   currentRadius = radiusM;
 
-  post({ id, type: 'progress', stage: 4 });
-  if (graph) {
-    graph.nodeEle = await loadElevations(graph.nodeLng, graph.nodeLat, abort?.signal);
-    if (graph.nodeEle) {
-      // per-segment elevation delta — drives slope + climb-direction costs
-      for (const seg of graph.segments) {
-        seg.dz = graph.nodeEle[seg.v]! - graph.nodeEle[seg.u]!;
-      }
-    }
-  }
-  if (my !== token) return 'ok';
-
   lastSnaps = snapAll(points, snapRadiusM);
   post({ id, type: 'ready', snaps: lastSnaps, radiusM });
 
@@ -127,14 +115,38 @@ async function attempt(
   // the next waypoint instead (the corridor is loaded + cached now)
   if (lastSnaps.length < 2) return 'ok';
 
+  // route FIRST on flat costs so the line appears instantly (E5 speed fix on
+  // blocked networks); elevation is fetched afterwards and the route is
+  // recomputed + re-posted with climb-aware costs when the data arrives
   try {
     const route = planRoute(graph!, lastSnaps, settings, radiusM);
     post({ id, type: 'route', route });
-    return 'ok';
   } catch (e) {
     if (e instanceof RouteBlockedError && lastSnaps.some((s) => s === null)) return 'waypoint';
     return 'widen';
   }
+  if (my !== token) return 'ok';
+
+  if (!isElevationDegraded()) {
+    post({ id, type: 'progress', stage: 4 });
+    if (graph) {
+      graph.nodeEle = await loadElevations(graph.nodeLng, graph.nodeLat, abort?.signal);
+      if (graph.nodeEle) {
+        // per-segment elevation delta — drives slope + climb-direction costs
+        for (const seg of graph.segments) {
+          seg.dz = graph.nodeEle[seg.v]! - graph.nodeEle[seg.u]!;
+        }
+        if (my !== token) return 'ok';
+        try {
+          const refined = planRoute(graph!, lastSnaps, settings, radiusM);
+          post({ id, type: 'route', route: refined });
+        } catch {
+          // elevation made the route infeasible — keep the flat route shown
+        }
+      }
+    }
+  }
+  return 'ok';
 }
 
 async function plan(

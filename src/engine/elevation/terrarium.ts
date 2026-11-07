@@ -133,6 +133,11 @@ export async function loadElevations(
   }
 }
 
+/** true when elevation is known-unreachable in this session (skip the stage pill) */
+export function isElevationDegraded(): boolean {
+  return degraded;
+}
+
 /** test hook: clear in-memory tiles between tests */
 export function clearElevationCache(): void {
   memoryCache.clear();
