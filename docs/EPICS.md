@@ -454,3 +454,22 @@ Glyphs/sprites stay hosted (few small requests); attribution unchanged.
 **User-side build (README):** Planetiler (`java -jar planetiler.jar --area=austria --download`,
 ~1–2 GB output for z0–14) → `pmtiles convert` → upload as `tiles/basemap.pmtiles` (needs HTTP
 range requests — Apache default). 204 unit + 28 e2e green.
+
+---
+
+## Own-basemap false-positive fix (2026-11-07, "map doesn't load locally anymore")
+
+**Diagnosis:** `probeOwnBasemap` used a HEAD request and treated any 2xx as "archive exists". On
+dev servers with SPA fallback, a missing `basemap.pmtiles` returns **200 + index.html** — the probe
+enabled own-basemap mode, the pmtiles parser fetched the HTML and threw "Wrong magic number for
+PMTiles archive", breaking every style layer → blank map.
+
+**Fixes:**
+- the probe now uses a **range request** (`Range: bytes=0-511`) and validates the **PMTiles magic
+  number** ("PM", the same check the pmtiles library performs). This kills the SPA-fallback false
+  positive *and* doubles as a range-support check — a server that ignores ranges (200 for the
+  whole file) is rejected, since PMTiles requires byte serving;
+- hardening: if a present-but-corrupt archive still fails at runtime, the map reverts to the
+  hosted style once instead of staying broken.
+- 7 new probe unit tests (magic validation, SPA fallback, no-range server, 404, network error,
+  range-header assertion). 211 unit + 28 e2e green.

@@ -59,7 +59,12 @@ export function rewriteStyleForOwnBasemap(
 
 /**
  * Probe for the own-basemap archive on a resolved tile host.
- * Returns its absolute URL, or null when absent/unreachable.
+ *
+ * Validates CONTENT, not just the status code: dev servers with SPA fallback
+ * answer a missing file with 200 + HTML, which would otherwise be mistaken
+ * for an archive ("Wrong magic number" + a broken map was the symptom).
+ * A range request also doubles as a range-support check — PMTiles needs it.
+ * Returns the archive URL, or null when absent / invalid / unreachable.
  */
 export async function probeOwnBasemap(
   tileBase: string,
@@ -67,8 +72,13 @@ export async function probeOwnBasemap(
 ): Promise<string | null> {
   const url = ownBasemapUrl(tileBase);
   try {
-    const res = await fetch(url, { method: 'HEAD', signal });
-    return res.ok ? url : null;
+    const res = await fetch(url, { signal, headers: { Range: 'bytes=0-511' } });
+    // a server that ignores ranges (200 for the whole file) cannot serve
+    // PMTiles — and an SPA fallback serves HTML this way
+    if (res.status !== 206) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length < 8 || bytes[0] !== 0x50 || bytes[1] !== 0x4d) return null;
+    return url;
   } catch {
     return null;
   }
