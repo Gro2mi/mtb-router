@@ -57,6 +57,11 @@ export function createMap(container: HTMLElement): MapHandle {
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new NorthControl(), 'top-right');
 
+  // dev console/probe access (E7.2-style instrumentation, no-op in prod builds)
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).__mtbrMap = map;
+  }
+
   const geolocate = new GeolocateControl({
     positionOptions: { enableHighAccuracy: true, timeout: 10_000 },
     trackUserLocation: true,

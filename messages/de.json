@@ -41,6 +41,7 @@
   "reverse": "Umkehren",
   "clear": "Leeren",
   "snap_radius": "Fangradius",
+  "settings_contours": "Höhenlinien",
   "tiles_url_label": "URL selbst gehosteter Kartendaten",
   "tiles_url_hint": "Leer lassen, um automatisch einen Tiles-Ordner neben der App zu finden (tiles/ oder mtb-tiles/).",
   "tiles_url_save": "Speichern",

@@ -14,8 +14,17 @@ export type CorridorPhase = 'idle' | 'loading' | 'ready' | 'error';
 export type PlanningMode = 'browse' | 'plan';
 
 const SNAP_RADIUS_KEY = 'mtbr.snapRadius.v1';
+const CONTOURS_KEY = 'mtbr.contours.v1';
 export const SNAP_RADIUS_CHOICES = [50, 100, 250, 500] as const;
 const DEFAULT_SNAP_RADIUS_M = 250;
+
+function loadContours(): boolean {
+  try {
+    return localStorage.getItem(CONTOURS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
 
 function loadSnapRadius(): number {
   try {
@@ -48,6 +57,8 @@ class PlanningState {
   errorCode = $state<import('../../engine/protocol').WorkerErrorCode | null>(null);
 
   snapRadiusM = $state<number>(loadSnapRadius());
+  /** contour lines overlay (Settings toggle, default on) */
+  contours = $state<boolean>(loadContours());
   /** rider difficulty settings (E4) — edited in the Difficulty tab, persisted (E6.3) */
   settings = $state<RiderSettings>(loadRiderSettings());
 
@@ -117,6 +128,15 @@ class PlanningState {
       // private mode — choice won't persist
     }
     if (this.lastPoints.length > 0) this.host.setSnapRadius(radiusM);
+  }
+
+  setContours(on: boolean): void {
+    this.contours = on;
+    try {
+      localStorage.setItem(CONTOURS_KEY, on ? '1' : '0');
+    } catch {
+      // private mode — choice won't persist
+    }
   }
 
   retry(): void {

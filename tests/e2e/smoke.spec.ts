@@ -83,6 +83,27 @@ test.describe('mobile viewport', () => {
     await expect(page.getByRole('button', { name: 'Difficulty' })).toBeVisible();
   });
 
+  test('contour toggle on the settings page persists across reload', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('stats-row')).toBeVisible();
+
+    // default on; open Settings → toggle off
+    await page.getByTestId('stat-distance').click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const toggle = page.getByTestId('contours-toggle');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toBeChecked();
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+
+    // survives reload (settings page needs reopening — sheet collapsed again)
+    await page.reload();
+    await expect(page.getByTestId('stats-row')).toBeVisible();
+    await page.getByTestId('stat-distance').click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page.getByTestId('contours-toggle')).not.toBeChecked();
+  });
+
   test('any tap on the collapsed sheet opens it; plan button clears the open sheet', async ({
     page,
   }) => {

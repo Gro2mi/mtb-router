@@ -183,8 +183,11 @@ Notes:
 The app is an installable PWA: after opening it once, use your browser's **Install app** action
 (address-bar icon / browser menu) for a standalone window with an app icon. A service worker
 precaches the app shell and caches visited map data (basemap tiles, your corridor tiles,
-elevation) — visited regions and previously planned rides stay available **offline**. New app
-versions activate automatically on the next online visit.
+elevation, contour-line DEM tiles) — visited regions and previously planned rides stay available
+**offline**. New app versions activate automatically on the next online visit.
+
+Contour lines (Settings → toggle) are rendered client-side from the same AWS Terrain Tiles the
+elevation profile uses — no extra tile hosting or API key needed.
 
 ## Limitations
 
@@ -193,8 +196,9 @@ versions activate automatically on the next online visit.
 - Node-level difficulty (crux spots) and per-country access rules are approximated.
 - The corridor fetch radius is capped — extremely long detours outside the corridor need via
   points (the widening loop helps but has limits).
-- Elevation comes from AWS Terrain Tiles; on networks that block AWS the profile is unavailable
-  (the route still works, with flat-cost estimates).
+- Elevation and contour lines come from AWS Terrain Tiles; on networks that block AWS the
+  elevation profile is unavailable (the route still works, with flat-cost estimates) and contour
+  lines stay empty — both degrade independently of the routing itself.
 - No turn-by-turn navigation — this is a planning tool.
 
 ## Attribution

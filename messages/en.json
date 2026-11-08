@@ -41,6 +41,7 @@
   "reverse": "Reverse",
   "clear": "Clear",
   "snap_radius": "Snap radius",
+  "settings_contours": "Contour lines",
   "tiles_url_label": "Self-hosted map data URL",
   "tiles_url_hint": "Leave empty to auto-detect a tiles folder next to the app (tiles/ or mtb-tiles/).",
   "tiles_url_save": "Save",

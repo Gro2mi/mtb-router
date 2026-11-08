@@ -233,6 +233,19 @@
           </select>
         </label>
 
+        <label class="mt-4 flex min-h-11 items-center justify-between gap-2 text-sm">
+          <span class="font-medium text-slate-700 dark:text-slate-200">
+            {i18n.m.settings_contours()}
+          </span>
+          <input
+            type="checkbox"
+            class="h-6 w-6 accent-orange-600"
+            data-testid="contours-toggle"
+            checked={planning.contours}
+            onchange={(e) => planning.setContours(e.currentTarget.checked)}
+          />
+        </label>
+
         <details class="mt-4">
           <summary class="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
             {i18n.m.tiles_url_label()}

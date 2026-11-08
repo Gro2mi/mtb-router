@@ -13,12 +13,14 @@
   import Toast from './lib/ui/Toast.svelte';
   import Fab from './lib/ui/Fab.svelte';
   import StatusPill from './lib/ui/StatusPill.svelte';
+  import { ContourLayer } from './lib/map/contourLayer';
 
   let mapContainer: HTMLDivElement;
 
   let mapHandle: MapHandle | undefined = $state();
   let layer: WaypointLayer | undefined = $state();
   let routeLayer: RouteLayer | undefined = $state();
+  let contourLayer: ContourLayer | undefined = $state();
 
   onMount(() => {
     // global error boundary (E7.3): surface uncaught failures as a toast
@@ -55,6 +57,9 @@
     // The waypoint/route layers add map sources, which requires the style to
     // be loaded first (addSource throws before the map's 'load' event).
     const onMapLoad = (): void => {
+      // contours first: everything planned on top (route, waypoints) paints above
+      contourLayer = new ContourLayer(map);
+      contourLayer.setVisible(planning.contours);
       layer = new WaypointLayer(map, {
         onDelete: (id) => waypoints.remove(id),
         onMove: (id, lng, lat) => waypoints.move(id, lng, lat),
@@ -129,12 +134,19 @@
       gestures.destroy();
       map.off('load', onMapLoad);
       routeLayer?.destroy();
+      contourLayer?.destroy();
       layer?.destroy();
       mapHandle?.destroy();
       mapHandle = undefined;
       layer = undefined;
       routeLayer = undefined;
+      contourLayer = undefined;
     };
+  });
+
+  // --- contour toggle (Settings) -------------------------------------------
+  $effect(() => {
+    contourLayer?.setVisible(planning.contours);
   });
 
   // --- corridor + routing pipeline (E3): plan when waypoints change --------
