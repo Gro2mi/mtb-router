@@ -14,6 +14,9 @@
   import Fab from './lib/ui/Fab.svelte';
   import StatusPill from './lib/ui/StatusPill.svelte';
   import { ContourLayer } from './lib/map/contourLayer';
+  import SearchBar from './lib/ui/SearchBar.svelte';
+  import type { GeoResult } from './lib/search/geocode';
+  import { Marker } from 'maplibre-gl';
 
   let mapContainer: HTMLDivElement;
 
@@ -21,6 +24,28 @@
   let layer: WaypointLayer | undefined = $state();
   let routeLayer: RouteLayer | undefined = $state();
   let contourLayer: ContourLayer | undefined = $state();
+  let searchPin: Marker | null = null;
+
+  /** place search: fly to the result and drop a pin until the next action */
+  function onSearchPick(r: GeoResult): void {
+    const { map } = mapHandle!;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    map.flyTo({
+      center: [r.lng, r.lat],
+      zoom: Math.max(map.getZoom(), 14),
+      duration: reduced ? 0 : 1400,
+    });
+    searchPin?.remove();
+    const el = document.createElement('div');
+    el.className = 'mtbr-search-pin mtbr-ui';
+    el.setAttribute('aria-hidden', 'true');
+    searchPin = new Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map);
+  }
+
+  function clearSearchPin(): void {
+    searchPin?.remove();
+    searchPin = null;
+  }
 
   onMount(() => {
     // global error boundary (E7.3): surface uncaught failures as a toast
@@ -82,6 +107,7 @@
 
     // right-click anywhere on the map adds a waypoint (desktop)
     map.on('contextmenu', (e) => {
+      clearSearchPin();
       addWaypointAt(e.lngLat.lng, e.lngLat.lat);
     });
 
@@ -89,12 +115,14 @@
     const gestures: GestureBinding = bindGestures(mapContainer, {
       onTap: ({ x, y, target }) => {
         if (isUiTarget(target ?? null)) return;
+        clearSearchPin();
         if (planning.mode !== 'plan') return;
         const lngLat = map.unproject([x, y]);
         addWaypointAt(lngLat.lng, lngLat.lat);
       },
       onLongPress: ({ x, y, target }) => {
         if (isUiTarget(target ?? null)) return;
+        clearSearchPin();
         const lngLat = map.unproject([x, y]);
         addWaypointAt(lngLat.lng, lngLat.lat);
       },
@@ -133,6 +161,7 @@
       window.removeEventListener('keydown', onKeyDown);
       gestures.destroy();
       map.off('load', onMapLoad);
+      clearSearchPin();
       routeLayer?.destroy();
       contourLayer?.destroy();
       layer?.destroy();
@@ -184,6 +213,9 @@
   <div class="absolute inset-0 {planning.mode === 'plan' ? 'plan-mode' : ''}">
     <div bind:this={mapContainer} class="map-surface h-full w-full" data-testid="map"></div>
   </div>
+  {#if mapHandle}
+    <SearchBar onPick={onSearchPick} onClear={clearSearchPin} />
+  {/if}
   <Fab />
   <StatusPill />
   <Sheet />

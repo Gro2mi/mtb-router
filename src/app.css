@@ -262,6 +262,25 @@ body {
   pointer-events: none;
 }
 
+/* search-result pin: a distinct drop shape, cleared on next search/map tap */
+.mtbr-search-pin {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px 9999px 9999px 0;
+  transform: rotate(-45deg);
+  background: #ea580c;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.45);
+  pointer-events: none;
+}
+.mtbr-search-pin::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: #ffffff;
+}
+
 /* segment popup beeline note */
 .mtbr-popup-beeline {
   color: #b45309;

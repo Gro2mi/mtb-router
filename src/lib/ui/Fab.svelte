@@ -1,5 +1,6 @@
 <script lang="ts">
   import { planning } from '../state/planning.svelte';
+  import { waypoints } from '../waypoints/store.svelte';
   import { i18n } from '../i18n.svelte';
 </script>
 
@@ -7,15 +8,15 @@
      Sits ABOVE the collapsed bottom sheet (z-30 so it is never cut by it) —
      the sheet publishes its live height as --sheet-h, so the button always
      clears the bar regardless of content or safe-area insets. The plan hint
-     stacks above the button instead of overlapping it. On phones the whole
-     stack hides while the sheet is open. -->
+     sits left of the button and disappears once the first waypoint exists.
+     On phones the whole stack hides while the sheet is open. -->
 <div
-  class="pointer-events-none absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+var(--sheet-h,10rem)+12px)] z-30 flex flex-col items-end gap-2 {planning
+  class="pointer-events-none absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+var(--sheet-h,10rem)+12px)] z-30 flex flex-row items-center gap-2 {planning
     .sheetExpanded
     ? 'hidden lg:flex'
-    : 'flex'} lg:right-[calc(384px+1.5rem)] lg:bottom-6 lg:flex-row lg:items-center"
+    : 'flex'} lg:right-[calc(384px+1.5rem)] lg:bottom-6"
 >
-  {#if planning.mode === 'plan'}
+  {#if planning.mode === 'plan' && waypoints.waypoints.length === 0}
     <div
       class="rounded-full bg-orange-600 px-3 py-1.5 text-xs font-bold tracking-wide text-white shadow-lg ring-1 ring-orange-800"
     >

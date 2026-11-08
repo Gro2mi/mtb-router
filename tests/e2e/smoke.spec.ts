@@ -120,3 +120,78 @@ test.describe('mobile viewport', () => {
     await expect(page.getByRole('button', { name: 'Planning mode' })).toBeVisible();
   });
 });
+
+const PHOTON_BODY = {
+  features: [
+    {
+      geometry: { coordinates: [11.35, 47.26] },
+      properties: { name: 'Natters', city: 'Natters', country: 'Österreich' },
+    },
+    {
+      geometry: { coordinates: [11.39, 47.28] },
+      properties: { name: 'Nockspitze', state: 'Tirol', country: 'Österreich' },
+    },
+  ],
+};
+
+function mockGeocoders(context: import('@playwright/test').BrowserContext): void {
+  context.route('**/photon.komoot.io/**', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(PHOTON_BODY) }),
+  );
+}
+
+test('place search: results dropdown, flyTo + pin on pick', async ({ page, context }) => {
+  mockGeocoders(context);
+  await page.goto('/');
+  await expect(page.getByTestId('search-input')).toBeVisible();
+
+  await page.getByTestId('search-input').fill('nock');
+  await expect(page.getByTestId('search-result')).toHaveCount(2, { timeout: 10_000 });
+  await expect(page.getByTestId('search-result').first()).toContainText('Natters');
+
+  // keyboard: arrow down + enter picks the highlighted row
+  await page.getByTestId('search-input').press('ArrowDown');
+  await page.getByTestId('search-input').press('Enter');
+
+  // the camera flew to the picked place (flyTo animates ~1.4 s) and the pin is on the map
+  await expect
+    .poll(async () => {
+      const center = await page.evaluate(() => {
+        const map = (window as unknown as {
+          __mtbrMap?: { getCenter(): { lng: number; lat: number } };
+        }).__mtbrMap;
+        const c = map!.getCenter();
+        return { lng: c.lng.toFixed(2), lat: c.lat.toFixed(2) };
+      });
+      return center;
+    }, { timeout: 10_000 })
+    .toEqual({ lng: '11.39', lat: '47.28' });
+  await expect(page.locator('.mtbr-search-pin')).toBeVisible();
+
+  // a map tap clears the pin (search lifecycle ends on next map action)
+  await page.evaluate(() => localStorage.removeItem('mtbr.viewport.v1'));
+  await page.locator('canvas.maplibregl-canvas').click({ position: { x: 200, y: 400 } });
+  await expect(page.locator('.mtbr-search-pin')).toHaveCount(0);
+});
+
+test('place search falls back to Nominatim when Photon is unreachable', async ({
+  page,
+  context,
+}) => {
+  let nominatimHits = 0;
+  await context.route('**/photon.komoot.io/**', (route) => route.abort());
+  await context.route('**/nominatim.openstreetmap.org/**', (route) => {
+    nominatimHits++;
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify([{ lon: '11.35', lat: '47.26', display_name: 'Natters, Tirol' }]),
+    });
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('search-input')).toBeVisible();
+
+  await page.getByTestId('search-input').fill('natters');
+  await expect(page.getByTestId('search-result')).toHaveCount(1, { timeout: 10_000 });
+  await expect(page.getByTestId('search-result')).toContainText('Natters, Tirol');
+  expect(nominatimHits).toBe(1);
+});

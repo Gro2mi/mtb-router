@@ -84,11 +84,15 @@ test('plan mode: taps add waypoints that snap to the nearest way', async ({ page
   await setupPage(page, context);
 
   await page.getByRole('button', { name: 'Planning mode' }).click();
+  // hint visible before the first waypoint, gone after it (user request)
+  const hint = page.getByText('Tap the map to add waypoints', { exact: true });
+  await expect(hint).toBeVisible();
 
   await canvas(page).click({ position: TAP_TRACK });
   await expect(page.locator('.mtbr-waypoint[data-snapped="true"]')).toHaveCount(1, {
     timeout: 10_000,
   });
+  await expect(hint).toHaveCount(0);
 
   await canvas(page).click({ position: TAP_PATH });
   await expect(page.locator('.mtbr-waypoint[data-snapped="true"]')).toHaveCount(2, {
