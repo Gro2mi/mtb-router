@@ -78,6 +78,10 @@ export interface RouteSegment {
   timeS: number;
   /** effective MTB difficulty in travel direction, rounded 0..6 (E5 coloring) */
   difficulty?: number;
+  /** an explicit sac_scale tag was present (difficulty labels prefer S over T) */
+  difficultySacTagged?: boolean;
+  /** trail label shown on the map: 'S2', 'T3', … (absent on beelines) */
+  difficultyLabel?: string;
   /** walking-only edge (footway / bicycle=no → portage) */
   walking?: boolean;
   /** |Δz| / length of the underlying way segment (E5.2 max slope) */

@@ -117,6 +117,8 @@ export interface EffectiveDifficulty {
   sac: number;
   /** an explicit mtb tag was present (vs inferred, PLAN §7.5) */
   taggedMtb: boolean;
+  /** an explicit sac_scale tag was present (route labels: prefer S over T) */
+  taggedSac: boolean;
 }
 
 /**
@@ -177,7 +179,7 @@ export function effectiveDifficulty(attrs: WayAttrs): EffectiveDifficulty {
     mtbDown = Math.max(mtbDown, sac - 1);
     mtbUp = Math.max(mtbUp, Math.min(5, sac));
   }
-  return { mtbDown, mtbUp, sac, taggedMtb };
+  return { mtbDown, mtbUp, sac, taggedMtb, taggedSac: attrs.sacScale !== undefined };
 }
 
 export interface SegmentCost {

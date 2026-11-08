@@ -18,10 +18,12 @@ import { segmentColor, WALKING_COLOR } from './difficultyColors';
 import type { RouteResult, RouteSegment } from '../../engine/protocol';
 
 const SOURCE = 'mtbr-route';
+const LABEL_SOURCE = 'mtbr-route-labels';
 const CASING = 'mtbr-route-casing';
 const LINE = 'mtbr-route-line';
 const WALK = 'mtbr-route-walk';
 const BEELINE = 'mtbr-route-beeline';
+const LABEL = 'mtbr-route-difficulty-label';
 
 interface SegmentProps {
   color: string;
@@ -32,6 +34,8 @@ interface SegmentProps {
   surface: string;
   difficulty: number;
   tagged: boolean;
+  /** trail label: 'S2', 'T3', … (user request — S preferred over T) */
+  label: string;
   startM: number;
   endM: number;
 }
@@ -46,6 +50,7 @@ function segmentProperties(seg: RouteSegment, startM: number, endM: number): Seg
     surface: seg.surface ?? '',
     difficulty: Math.round(seg.difficulty ?? seg.mtbDown),
     tagged: seg.difficultyTagged === true,
+    label: seg.difficultyLabel ?? '',
     startM,
     endM,
   };
@@ -127,6 +132,30 @@ export class RouteLayer {
         'line-dasharray': [1.5, 2.5],
       },
     });
+    // difficulty labels along the path (user request): 'S2', 'T3' … drawn
+    // from a separate source holding CONSECUTIVE SAME-LABEL runs merged into
+    // one line feature each — one label per trail stretch instead of one per
+    // intersection-split way piece. Beelines (no trail data) stay unlabeled.
+    map.addSource(LABEL_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: LABEL,
+      type: 'symbol',
+      source: LABEL_SOURCE,
+      minzoom: 12,
+      layout: {
+        'symbol-placement': 'line-center',
+        'text-field': ['get', 'label'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 10,
+        'text-allow-overlap': false,
+        'text-padding': 2,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#3f3f46',
+        'text-halo-width': 1.6,
+      },
+    });
 
     // segment popup + profile highlight (E5.2/E5.3 two-way sync)
     const onSegmentClick = (
@@ -157,8 +186,10 @@ export class RouteLayer {
     if (!source) return;
     profileState.reset();
     this.setScrubPoint(null);
+    const labelSource = this.map.getSource(LABEL_SOURCE) as GeoJSONSource | undefined;
     if (!route) {
       source.setData({ type: 'FeatureCollection', features: [] });
+      labelSource?.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
     const features: {
@@ -167,24 +198,50 @@ export class RouteLayer {
       geometry: { type: 'LineString'; coordinates: [number, number][] };
     }[] = [];
     let cum = 0;
+    // consecutive same-label segments merge into one line feature (one label
+    // per trail stretch — way pieces split at intersections stay unlabeled)
+    let run: { label: string; coords: [number, number][] } | null = null;
+    const flushRun = (): void => {
+      if (run && run.coords.length >= 2) {
+        labelFeatures.push({
+          type: 'Feature',
+          properties: { label: run.label },
+          geometry: { type: 'LineString', coordinates: run.coords },
+        });
+      }
+      run = null;
+    };
+    const labelFeatures: {
+      type: 'Feature';
+      properties: { label: string };
+      geometry: { type: 'LineString'; coordinates: [number, number][] };
+    }[] = [];
     for (const leg of route.legs) {
       for (const seg of leg.segments) {
         const [from, to] = seg.coords;
+        const fromLL = [from![1]!, from![0]!] as [number, number];
+        const toLL = [to![1]!, to![0]!] as [number, number];
         features.push({
           type: 'Feature',
           properties: segmentProperties(seg, cum, cum + seg.distanceM),
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [from![1]!, from![0]!] as [number, number],
-              [to![1]!, to![0]!] as [number, number],
-            ],
-          },
+          geometry: { type: 'LineString', coordinates: [fromLL, toLL] },
         });
+        const label = seg.difficultyLabel;
+        if (label && seg.beeline !== true) {
+          if (run && run.label === label) run.coords.push(toLL);
+          else {
+            flushRun();
+            run = { label, coords: [fromLL, toLL] };
+          }
+        } else {
+          flushRun();
+        }
         cum += seg.distanceM;
       }
     }
+    flushRun();
     source.setData({ type: 'FeatureCollection', features });
+    labelSource?.setData({ type: 'FeatureCollection', features: labelFeatures });
   }
 
   /** elevation-profile scrub position rendered as a marker on the route */
@@ -210,9 +267,11 @@ export class RouteLayer {
 
   destroy(): void {
     this.setScrubPoint(null);
-    for (const id of [BEELINE, LINE, WALK, CASING]) {
+    for (const id of [LABEL, BEELINE, LINE, WALK, CASING]) {
       if (this.map.getLayer(id)) this.map.removeLayer(id);
     }
-    if (this.map.getSource(SOURCE)) this.map.removeSource(SOURCE);
+    for (const id of [SOURCE, LABEL_SOURCE]) {
+      if (this.map.getSource(id)) this.map.removeSource(id);
+    }
   }
 }

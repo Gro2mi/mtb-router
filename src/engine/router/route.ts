@@ -121,6 +121,9 @@ function buildSegment(graph: Graph, costs: SegmentCosts, hop: Hop): RouteSegment
   const climbing = dirDz > 0.5;
   const difficulty = Math.max(0, Math.min(6, Math.round(climbing ? eff.mtbUp : eff.mtbDown)));
   const slope = seg.lenM > 0 ? Math.abs(dzTotal) / seg.lenM : 0;
+  // trail label (user request): prefer the mtb:scale (S) over sac_scale (T)
+  // when both exist; fully inferred ways follow the legend's S numbering
+  const difficultyLabel = eff.taggedSac && !eff.taggedMtb ? `T${eff.sac}` : `S${difficulty}`;
   return {
     wayId: graph.wayIds[seg.wayIdx]!,
     highway: attrs.highway,
@@ -129,12 +132,14 @@ function buildSegment(graph: Graph, costs: SegmentCosts, hop: Hop): RouteSegment
     mtbUp: eff.mtbUp,
     sac: eff.sac,
     difficultyTagged: eff.taggedMtb,
+    difficultySacTagged: eff.taggedSac,
     coords,
     distanceM: seg.lenM * hop.portion,
     ascentM: ascent,
     descentM: descent,
     timeS: cost * hop.portion,
     difficulty,
+    difficultyLabel,
     walking: attrs.walkingOnly === true,
     slope,
   };

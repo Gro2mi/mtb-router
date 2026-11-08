@@ -89,7 +89,7 @@ describe('calibration fixtures (E3.8) — pin current model behavior', () => {
 
 function bundleFrom(
   nodes: [number, number, number][],
-  ways: { id: number; nodes: number[] }[],
+  ways: { id: number; nodes: number[]; attrs?: Record<string, unknown> }[],
 ): WaysBundle {
   const map = new Map<number, [number, number]>();
   for (const [id, lat, lng] of nodes) map.set(id, [lat, lng]);
@@ -98,10 +98,118 @@ function bundleFrom(
     ways: ways.map((w) => ({
       id: w.id,
       nodeIds: w.nodes,
-      attrs: { highway: 'track', tracktype: 'grade2', surface: 'compacted', isSteps: false },
+      attrs: {
+        highway: 'track',
+        tracktype: 'grade2',
+        surface: 'compacted',
+        isSteps: false,
+        ...w.attrs,
+      },
     })),
   };
 }
+
+describe('difficulty labels on paths (user request: prefer S over T)', () => {
+  const labelsOf = (r: ReturnType<typeof planRoute>): (string | undefined)[] =>
+    r.legs.flatMap((l) => l.segments.map((s) => s.difficultyLabel));
+
+  it('mtb:scale way → S label, sac-only way → T label', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+          [3, 47.001, 8.002],
+        ],
+        [
+          { id: 10, nodes: [1, 2], attrs: { highway: 'path', mtbScale: 2 } },
+          {
+            id: 20,
+            nodes: [2, 3],
+            attrs: { highway: 'path', sacScale: 'demanding_mountain_hiking' },
+          },
+        ],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      // way END = segment 0 at t=1 (a 2-node way has only segment index 0)
+      { wayId: 20, nodeIndex: 0, t: 1, lng: 8.002, lat: 47.001, distanceM: 0 },
+    ];
+    const labels = labelsOf(planRoute(graph, snaps, settings, 2000));
+    expect(labels).toContain('S2'); // way 10: mtb:scale=2
+    expect(labels).toContain('T3'); // way 20: sac_scale T3 only
+  });
+
+  it('way tagged with both scales prefers the S label', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+        ],
+        [
+          {
+            id: 10,
+            nodes: [1, 2],
+            attrs: { highway: 'path', mtbScale: 2, sacScale: 'demanding_mountain_hiking' },
+          },
+        ],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      { wayId: 10, nodeIndex: 0, t: 1, lng: 8.001, lat: 47.0, distanceM: 0 },
+    ];
+    const labels = labelsOf(planRoute(graph, snaps, settings, 2000));
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every((l) => l === 'S2')).toBe(true);
+  });
+
+  it('untagged forest road follows the legend S numbering (inferred)', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+        ],
+        [{ id: 10, nodes: [1, 2] }],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      { wayId: 10, nodeIndex: 0, t: 1, lng: 8.001, lat: 47.0, distanceM: 0 },
+    ];
+    const labels = labelsOf(planRoute(graph, snaps, settings, 2000));
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every((l) => l === 'S0')).toBe(true);
+  });
+
+  it('beeline segments carry no label', () => {
+    const graph = buildGraph(
+      bundleFrom(
+        [
+          [1, 47.0, 8.0],
+          [2, 47.0, 8.001],
+        ],
+        [{ id: 10, nodes: [1, 2] }],
+      ),
+    );
+    const snaps = [
+      { wayId: 10, nodeIndex: 0, t: 0, lng: 8.0, lat: 47.0, distanceM: 0 },
+      null,
+    ];
+    const result = planRoute(graph, snaps, settings, 2000, {
+      allowBeelines: true,
+      positions: [
+        [8.0, 47.0],
+        [8.002, 47.0002],
+      ],
+    });
+    const beeline = result.legs.flatMap((l) => l.segments).find((s) => s.beeline === true)!;
+    expect(beeline.difficultyLabel).toBeUndefined();
+  });
+});
 
 describe('beeline fallback (user request: connect waypoints without trail data)', () => {
   const noConnection: RiderSettings = settings;

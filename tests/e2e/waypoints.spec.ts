@@ -217,6 +217,31 @@ test('route engine: two snapped waypoints produce a route with stats (E3)', asyn
   await expect(page.getByTestId('route-stats')).toContainText(/km/i, { timeout: 30_000 });
   // no error pill
   await expect(page.getByTestId('route-error')).toHaveCount(0);
+
+  // difficulty labels along the path (user request): the fixture's S2
+  // singletrail (mtb:scale=2, 303 m) must carry an 'S2' label on the map
+  await expect
+    .poll(
+      async () => {
+        const labels = await page.evaluate(() => {
+          const map = (
+            window as unknown as {
+              __mtbrMap?: {
+                queryRenderedFeatures(): { layer: { id: string }; properties: Record<string, unknown> }[];
+              };
+            }
+          ).__mtbrMap;
+          if (!map) return [];
+          return map
+            .queryRenderedFeatures()
+            .filter((f) => f.layer.id === 'mtbr-route-difficulty-label')
+            .map((f) => String(f.properties.label));
+        });
+        return labels;
+      },
+      { timeout: 15_000 },
+    )
+    .toContain('S2');
 });
 
 test('falls back to the main OSM API when all Overpass mirrors are unreachable', async ({
