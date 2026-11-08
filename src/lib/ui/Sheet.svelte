@@ -292,7 +292,9 @@
           {/each}
         </div>
 
-        <div class="mt-4 mr-5 max-h-[45dvh] overflow-y-auto lg:max-h-[calc(100dvh-18rem)]">
+        <!-- pr keeps content clear of the scrollbar (a margin would just move
+             the scrollbar inward with the box) -->
+        <div class="mt-4 max-h-[45dvh] overflow-y-auto pr-5 lg:max-h-[calc(100dvh-18rem)]">
           {#if activeTab === 'route'}
             <div class="flex items-center justify-between gap-2">
               <span class="text-sm font-bold" data-testid="waypoint-count">
