@@ -46,8 +46,7 @@
   }
 </script>
 
-<!-- mr keeps the track/thumb clear of a (non-overlay) scrollbar gutter -->
-<div class="relative mr-2.5 flex h-11 items-center" data-testid={`range-${uid}`}>
+<div class="relative flex h-11 w-full items-center" data-testid={`range-${uid}`}>
   <div class="absolute inset-x-0 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></div>
   <div
     class="absolute h-1.5 rounded-full bg-orange-600"
