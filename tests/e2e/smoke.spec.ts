@@ -35,17 +35,22 @@ test('app loads with a working map (sized container, worker, style)', async ({ p
     .toBe(true);
 });
 
-test('language switches to German and survives reload', async ({ page }) => {
+test('language switches to German and survives reload (via settings page)', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Difficulty' })).toBeVisible();
 
+  // language lives on the settings page (gear button in the sheet header)
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'DE', exact: true }).click();
 
-  await expect(page.getByRole('button', { name: 'Schwierigkeit' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Difficulty' })).toBeHidden();
 
   await page.reload();
+  // German persisted through the reload
   await expect(page.getByRole('button', { name: 'Schwierigkeit' })).toBeVisible();
+  await page.getByRole('button', { name: 'Einstellungen' }).click();
+  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
 });
 
 test('north button resets a rotated map', async ({ page }) => {

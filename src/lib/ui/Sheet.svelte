@@ -27,6 +27,8 @@
   type Tab = 'route' | 'difficulty' | 'routes';
 
   let activeTab = $state<Tab>('route');
+  /** settings page (language, snap radius, tiles URL) instead of the tabs */
+  let showSettings = $state(false);
 
   // >= lg the panel is a persistent side drawer and always expanded (E1.4).
   let isDesktop = $state(false);
@@ -36,6 +38,20 @@
     update();
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
+  });
+
+  // publish the sheet height so the plan-mode FAB can sit exactly above it
+  // (magic offsets drifted whenever the collapsed bar grew a few pixels)
+  let asideEl: HTMLElement | undefined = $state();
+  $effect(() => {
+    if (!asideEl) return;
+    const el = asideEl;
+    const publish = () =>
+      document.documentElement.style.setProperty('--sheet-h', `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   const open = $derived(planning.sheetExpanded || isDesktop);
@@ -74,6 +90,7 @@
 </script>
 
 <aside
+  bind:this={asideEl}
   class="pointer-events-auto absolute inset-x-0 bottom-0 z-20 rounded-t-2xl border-t-2 border-orange-600 bg-white shadow-[0_-4px_16px_rgb(0_0_0/0.25)] lg:inset-x-auto lg:inset-y-0 lg:right-0 lg:w-96 lg:rounded-none lg:border-t-0 lg:border-l-2 dark:border-orange-500 dark:bg-slate-900"
   data-testid="sheet"
 >
@@ -100,7 +117,36 @@
       onclick={!open ? openOnBackground : undefined}
     >
       <h1 class="text-base font-extrabold tracking-tight">{i18n.m.app_name()}</h1>
-      <LocaleSwitcher />
+      <button
+        type="button"
+        class="flex h-11 w-11 items-center justify-center rounded-lg transition-colors {showSettings
+          ? 'bg-orange-600 text-white'
+          : 'text-slate-700 hover:bg-slate-100 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-slate-800'}"
+        aria-pressed={showSettings}
+        aria-label={i18n.m.settings()}
+        title={i18n.m.settings()}
+        onclick={() => {
+          showSettings = !showSettings;
+          if (showSettings) planning.sheetExpanded = true;
+        }}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+          />
+        </svg>
+      </button>
     </header>
 
     {#if !open}
@@ -137,6 +183,80 @@
             {i18n.m.stats_duration()}
           </div>
         </div>
+      </div>
+    {:else if showSettings}
+      <!-- Settings page: language, snap radius, self-hosted map data URL -->
+      <div class="px-4 pb-4">
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="flex h-11 w-11 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-slate-100 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label={i18n.m.back()}
+            title={i18n.m.back()}
+            onclick={() => (showSettings = false)}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+          <h2 class="text-base font-extrabold tracking-tight">{i18n.m.settings()}</h2>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between gap-2 text-sm">
+          <span class="font-medium text-slate-700 dark:text-slate-200">
+            {i18n.m.language()}
+          </span>
+          <LocaleSwitcher />
+        </div>
+
+        <label class="mt-4 flex items-center justify-between gap-2 text-sm">
+          <span class="font-medium text-slate-700 dark:text-slate-200">{i18n.m.snap_radius()}</span>
+          <select
+            class="h-11 rounded-lg border-2 border-slate-400 bg-white px-2 text-sm font-medium text-slate-900 dark:border-slate-400 dark:bg-slate-900 dark:text-white"
+            value={planning.snapRadiusM}
+            onchange={(e) => planning.setSnapRadius(Number(e.currentTarget.value))}
+          >
+            {#each SNAP_RADIUS_CHOICES as radius (radius)}
+              <option value={radius}>{radius} m</option>
+            {/each}
+          </select>
+        </label>
+
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
+            {i18n.m.tiles_url_label()}
+          </summary>
+          <p class="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+            {i18n.m.tiles_url_hint()}
+          </p>
+          <div class="mt-2 flex gap-2">
+            <input
+              type="url"
+              class="h-11 min-w-0 flex-1 rounded-lg border-2 border-slate-400 bg-white px-2 text-sm text-slate-900 dark:border-slate-400 dark:bg-slate-900 dark:text-white"
+              placeholder="https://example.at/tiles"
+              bind:value={tileUrlDraft}
+              data-testid="tiles-url-input"
+            />
+            <button
+              type="button"
+              class="h-11 shrink-0 rounded-lg border-2 border-slate-400 bg-white px-3 text-sm font-bold text-slate-900 hover:border-orange-600 hover:text-orange-700 dark:border-slate-400 dark:bg-slate-900 dark:text-white dark:hover:border-orange-500"
+              onclick={saveTileUrl}
+            >
+              {i18n.m.tiles_url_save()}
+            </button>
+          </div>
+        </details>
       </div>
     {:else}
       <div id="sheet-content" class="px-4 pb-4">
@@ -184,46 +304,6 @@
                 </button>
               </div>
             </div>
-
-            <label class="mt-4 flex items-center justify-between gap-2 text-sm">
-              <span class="font-medium text-slate-700 dark:text-slate-200"
-                >{i18n.m.snap_radius()}</span
-              >
-              <select
-                class="h-11 rounded-lg border-2 border-slate-400 bg-white px-2 text-sm font-medium text-slate-900 dark:border-slate-400 dark:bg-slate-900 dark:text-white"
-                value={planning.snapRadiusM}
-                onchange={(e) => planning.setSnapRadius(Number(e.currentTarget.value))}
-              >
-                {#each SNAP_RADIUS_CHOICES as radius (radius)}
-                  <option value={radius}>{radius} m</option>
-                {/each}
-              </select>
-            </label>
-
-            <details class="mt-4">
-              <summary class="cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-200">
-                {i18n.m.tiles_url_label()}
-              </summary>
-              <p class="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                {i18n.m.tiles_url_hint()}
-              </p>
-              <div class="mt-2 flex gap-2">
-                <input
-                  type="url"
-                  class="h-11 min-w-0 flex-1 rounded-lg border-2 border-slate-400 bg-white px-2 text-sm text-slate-900 dark:border-slate-400 dark:bg-slate-900 dark:text-white"
-                  placeholder="https://example.at/tiles"
-                  bind:value={tileUrlDraft}
-                  data-testid="tiles-url-input"
-                />
-                <button
-                  type="button"
-                  class="h-11 shrink-0 rounded-lg border-2 border-slate-400 bg-white px-3 text-sm font-bold text-slate-900 hover:border-orange-600 hover:text-orange-700 dark:border-slate-400 dark:bg-slate-900 dark:text-white dark:hover:border-orange-500"
-                  onclick={saveTileUrl}
-                >
-                  {i18n.m.tiles_url_save()}
-                </button>
-              </div>
-            </details>
 
             {#if route}
               <div

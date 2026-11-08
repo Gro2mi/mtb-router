@@ -14,8 +14,8 @@ export type CorridorPhase = 'idle' | 'loading' | 'ready' | 'error';
 export type PlanningMode = 'browse' | 'plan';
 
 const SNAP_RADIUS_KEY = 'mtbr.snapRadius.v1';
-export const SNAP_RADIUS_CHOICES = [10, 30, 50, 100, 200] as const;
-const DEFAULT_SNAP_RADIUS_M = 50;
+export const SNAP_RADIUS_CHOICES = [50, 100, 250, 500] as const;
+const DEFAULT_SNAP_RADIUS_M = 250;
 
 function loadSnapRadius(): number {
   try {

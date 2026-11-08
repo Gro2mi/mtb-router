@@ -50,7 +50,9 @@ class I18nStore {
   }
 
   set(locale: Locale): void {
-    paraglideSetLocale(locale); // persists via the localStorage strategy
+    // reload: false — pure SPA, the UI re-renders reactively below; a hard
+    // reload would close the settings page (and drop any in-progress plan)
+    paraglideSetLocale(locale, { reload: false }); // persists via localStorage strategy
     this.locale = locale;
     if (typeof document !== 'undefined') document.documentElement.lang = locale;
   }

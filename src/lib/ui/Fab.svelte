@@ -4,12 +4,13 @@
 </script>
 
 <!-- Plan-mode toggle (E2.2): tap the map to add waypoints.
-     Sits ABOVE the collapsed bottom sheet (z-30 so it is never cut by it),
-     with the plan hint stacked above the button instead of overlapping it.
-     On phones the whole stack hides while the sheet is open — it would
-     otherwise float over the sheet content. -->
+     Sits ABOVE the collapsed bottom sheet (z-30 so it is never cut by it) —
+     the sheet publishes its live height as --sheet-h, so the button always
+     clears the bar regardless of content or safe-area insets. The plan hint
+     stacks above the button instead of overlapping it. On phones the whole
+     stack hides while the sheet is open. -->
 <div
-  class="pointer-events-none absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+10rem)] z-30 flex flex-col items-end gap-2 {planning
+  class="pointer-events-none absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+var(--sheet-h,10rem)+12px)] z-30 flex flex-col items-end gap-2 {planning
     .sheetExpanded
     ? 'hidden lg:flex'
     : 'flex'} lg:right-[calc(384px+1.5rem)] lg:bottom-6 lg:flex-row lg:items-center"
