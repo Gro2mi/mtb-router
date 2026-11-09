@@ -320,3 +320,17 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* attribution control: keep the bottom-left chip above the bottom sheet on
+   phones (desktop drawer is on the right — default corner position there) */
+@media (max-width: 1023px) {
+  .maplibregl-ctrl-bottom-left {
+    bottom: calc(env(safe-area-inset-bottom) + var(--sheet-h, 10rem) + 12px);
+  }
+}
+/* the expanded-compact attribution reads better with a max width on phones */
+@media (max-width: 1023px) {
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    max-width: min(70vw, 22rem);
+  }
+}

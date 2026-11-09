@@ -51,9 +51,31 @@ export function createMap(container: HTMLElement): MapHandle {
     attributionControl: false, // added separately, see below
   });
 
-  // Compact "ⓘ" attribution. Placed top-left because the bottom sheet/drawer
-  // covers the bottom edge (TODO E2: use map.setPadding when the sheet opens).
-  map.addControl(new AttributionControl({ compact: true }), 'top-left');
+  // Compact "ⓘ" attribution, bottom-left (kept above the bottom sheet on
+  // phones via CSS). Legal note: collapsing to a persistent, clickable chip
+  // is fine — the credits stay one tap away and are also listed in the sheet
+  // footer; hiding them entirely would violate the ODbL/OSMF guideline that
+  // attribution must stay visible.
+  map.addControl(new AttributionControl({ compact: true }), 'bottom-left');
+  // maplibre v6 starts the compact control EXPANDED and only collapses it on
+  // the first map drag; keep that expanded state for a few seconds so the
+  // credits are actually seen, then collapse back to the chip (never fully
+  // hidden — see note above). The style credits populate after 'load', so
+  // wait for the element to exist before arming the timer.
+  map.once('load', () => {
+    let tries = 0;
+    const wait = setInterval(() => {
+      const el = map
+        .getContainer()
+        .querySelector<HTMLElement>('.maplibregl-ctrl-attrib.maplibregl-compact');
+      if (el) {
+        clearInterval(wait);
+        setTimeout(() => el.classList.remove('maplibregl-compact-show'), 6000);
+      } else if (++tries > 40) {
+        clearInterval(wait);
+      }
+    }, 250);
+  });
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new NorthControl(), 'top-right');
 

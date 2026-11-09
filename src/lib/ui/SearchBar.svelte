@@ -84,10 +84,11 @@
   }
 </script>
 
-<!-- Place search: floats over the map below the top controls; the status
-     pill moved below it. Results dropdown lists name + region context. -->
+<!-- Place search: floats over the map's top edge (the ⓘ attribution moved to
+     the bottom-left corner, so the bar spans from the left edge now); the
+     status pill sits below it. Results dropdown lists name + region context. -->
 <div
-  class="pointer-events-auto absolute top-3 right-[3.75rem] left-14 z-20 lg:right-[calc(384px+3.75rem)]"
+  class="pointer-events-auto absolute top-3 right-[3.75rem] left-4 z-20 lg:right-[calc(384px+3.75rem)]"
   data-testid="search-bar"
 >
   <div class="relative">
