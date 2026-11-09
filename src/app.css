@@ -154,31 +154,26 @@ body {
    re-enable pointer-events itself (corner container sets it to none) */
 .mtbr-north-group {
   pointer-events: auto;
-  overflow: visible;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
+  /* default maplibregl-ctrl-group chrome (white bg + ring), like the
+     zoom/geolocate groups — no custom border */
 }
 .mtbr-north-group .mtbr-north {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 2px solid #334155;
+  /* same footprint as maplibre's zoom/geolocate buttons (29x29, opaque) */
+  width: 29px;
+  height: 29px;
+  border: none;
+  background: transparent;
   color: #0f172a;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
-  transition:
-    opacity 0.2s,
-    background 0.2s,
-    color 0.2s;
+  opacity: 1;
+  transition: color 0.2s;
 }
 .mtbr-north svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 .mtbr-north-needle {
   transform-origin: 12px 12px;
@@ -186,12 +181,9 @@ body {
 }
 .mtbr-north-group .mtbr-north:hover {
   color: var(--mtbr-accent);
-  border-color: var(--mtbr-accent);
 }
-/* already facing north: dimmed check state */
+/* already facing north: green check state, still fully opaque */
 .mtbr-north.mtbr-north-active {
-  opacity: 0.55;
-  border-color: #15803d;
   color: #15803d;
 }
 .mtbr-north:focus-visible {

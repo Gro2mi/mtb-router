@@ -37,7 +37,8 @@ export class NorthControl implements IControl {
     button.addEventListener('keydown', (event) => event.stopPropagation());
 
     const container = document.createElement('div');
-    container.className = 'maplibregl-ctrl-group mtbr-north-group';
+    // maplibregl-ctrl base class = float/clear/margin like the other controls
+    container.className = 'maplibregl-ctrl maplibregl-ctrl-group mtbr-north-group';
     container.appendChild(button);
 
     const update = (): void => {
