@@ -42,8 +42,35 @@ let token = 0;
 let abort: AbortController | null = null;
 /** drag probes may snap from further away than the waypoint snap radius */
 const PROBE_RADIUS_M = 150;
+/**
+ * Region the CURRENT graph was built from: bbox of the load's waypoints,
+ * expanded by the load radius it was fetched with (matching the tile-range
+ * math of fetchCorridorViaTiles). When a new plan's waypoints fall inside,
+ * the graph + snap index are reused as-is — adding a waypoint costs a snap
+ * + one A* run instead of re-parse + rebuild (the sluggishness fix).
+ */
+let loadedBounds: { minLng: number; minLat: number; maxLng: number; maxLat: number } | null =
+  null;
+let loadedRadiusM = 0;
 
 const post = (msg: WorkerToHost): void => self.postMessage(msg);
+
+/** expand the load bbox by its radius (same deg conversion as the tile fetch) */
+function coveredByLoadedRegion(points: CorridorPoint[], radiusM: number): boolean {
+  if (!loadedBounds || radiusM > loadedRadiusM) return false;
+  const meanLat =
+    loadedBounds.minLat / 2 + loadedBounds.maxLat / 2;
+  const dLat = radiusM / 111_320;
+  const dLng = radiusM / (111_320 * Math.max(0.1, Math.cos((meanLat * Math.PI) / 180)));
+  const b = loadedBounds;
+  return points.every(
+    (p) =>
+      p[0] >= b.minLng - dLng &&
+      p[0] <= b.maxLng + dLng &&
+      p[1] >= b.minLat - dLat &&
+      p[1] <= b.maxLat + dLat,
+  );
+}
 
 /** display positions per waypoint: snap position when snapped, raw otherwise */
 function displayPositions(
@@ -124,31 +151,45 @@ async function attempt(
   allowBeelines = false,
 ): Promise<'ok' | 'widen' | 'waypoint'> {
   post({ id, type: 'progress', stage: 0 });
+  // fast path: the current graph already covers this plan (user request:
+  // snapping/routing felt sluggish) — skip load + parse + graph rebuild
+  const canReuse = graph !== null && snapIndex !== null && coveredByLoadedRegion(points, radiusM);
   let bundle: WaysBundle | null = null;
-  try {
-    bundle = await loadBundle(points, radiusM, my, (stage) =>
-      post({ id, type: 'progress', stage }),
-    );
-  } catch (err) {
-    if (my !== token) return 'ok';
-    if (err instanceof TileDataError) {
-      post({
-        id,
-        type: 'error',
-        code: err.reason === 'region-miss' ? 'region_not_built' : 'corridor',
-      });
+  if (!canReuse) {
+    try {
+      bundle = await loadBundle(points, radiusM, my, (stage) =>
+        post({ id, type: 'progress', stage }),
+      );
+    } catch (err) {
+      if (my !== token) return 'ok';
+      if (err instanceof TileDataError) {
+        post({
+          id,
+          type: 'error',
+          code: err.reason === 'region-miss' ? 'region_not_built' : 'corridor',
+        });
+        return 'ok';
+      }
+      post({ id, type: 'error', code: 'corridor' });
       return 'ok';
     }
-    post({ id, type: 'error', code: 'corridor' });
-    return 'ok';
+    if (my !== token) return 'ok'; // superseded — value ignored
+    if (!bundle) {
+      post({ id, type: 'error', code: 'corridor' });
+      return 'ok';
+    }
+    buildState(bundle);
+    const lngs = points.map((p) => p[0]);
+    const lats = points.map((p) => p[1]);
+    loadedBounds = {
+      minLng: Math.min(...lngs),
+      maxLng: Math.max(...lngs),
+      minLat: Math.min(...lats),
+      maxLat: Math.max(...lats),
+    };
+    loadedRadiusM = radiusM;
   }
-  if (my !== token) return 'ok'; // superseded — value ignored
-  if (!bundle) {
-    post({ id, type: 'error', code: 'corridor' });
-    return 'ok';
-  }
-  buildState(bundle);
-  currentRadius = radiusM;
+  currentRadius = canReuse ? Math.max(currentRadius, radiusM) : radiusM;
 
   lastSnaps = snapAll(points, snapRadiusM);
   post({ id, type: 'ready', snaps: lastSnaps, radiusM });
@@ -173,7 +214,9 @@ async function attempt(
   }
   if (my !== token) return 'ok';
 
-  if (!isElevationDegraded()) {
+  // on the reuse path the elevations are already attached — the route above
+  // is climb-aware; only a freshly built graph still needs them
+  if (!graph!.nodeEle && !isElevationDegraded()) {
     post({ id, type: 'progress', stage: 4 });
     if (graph) {
       graph.nodeEle = await loadElevations(graph.nodeLng, graph.nodeLat, abort?.signal);
@@ -234,16 +277,10 @@ async function plan(
     if (i < RADIUS_STEPS.length - 1) post({ id, type: 'widening' });
   }
   // all strict attempts failed — last resort (user request): connect the
-  // blocked legs / unsnapped waypoints with beelines at the widest radius
-  await attempt(
-    id,
-    points,
-    settings,
-    RADIUS_STEPS[RADIUS_STEPS.length - 1]!,
-    snapRadiusM,
-    my,
-    true,
-  );
+  // blocked legs / unsnapped waypoints with beelines. Beelines need no
+  // corridor data, so run at the base radius — when the graph is already
+  // loaded and covers the points this reuses it instead of re-fetching 10 km
+  await attempt(id, points, settings, RADIUS_STEPS[0]!, snapRadiusM, my, true);
 }
 
 function reroute(id: number, settings: RiderSettings): void {
