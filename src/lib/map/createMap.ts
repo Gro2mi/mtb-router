@@ -111,6 +111,9 @@ export function createMap(container: HTMLElement): MapHandle {
               diff: false,
             },
           );
+          // a full setStyle replaces every runtime layer — re-apply the
+          // outdoor contrast + peak labels on top of the swapped style
+          applyOutdoorContrast(map);
         }
       }
     } catch {

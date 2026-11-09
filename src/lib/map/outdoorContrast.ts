@@ -128,6 +128,49 @@ function apply(map: MapLibreMap): void {
   // 3. paths: darker + wider (stock is faint tan)
   map.setPaintProperty('highway-path', 'line-color', '#93805e');
   map.setPaintProperty('highway-path', 'line-width', zoomWidth([15, 1.8, 20, 5.5]));
+
+  // 4. mountain peaks (user request: the most important orientation aid) —
+  // stock Bright has NO peak layer at all, even though the tiles carry the
+  // full OpenMapTiles mountain_peak source-layer (name + ele + rank). Add a
+  // two-line label: name + elevation, from z10 (the tiles themselves thin
+  // out low-rank peaks at low zooms, which keeps the overview uncluttered).
+  map.addLayer(
+    {
+      id: 'mtbr-peaks',
+      type: 'symbol',
+      source,
+      'source-layer': 'mountain_peak',
+      minzoom: 10,
+      filter: ['all', ['has', 'name'], ['!=', ['get', 'class'], 'ridge']],
+      layout: {
+        'symbol-placement': 'point',
+        'text-field': [
+          'format',
+          ['get', 'name'],
+          { 'text-font': ['literal', ['Noto Sans Italic']] },
+          '\n',
+          {},
+          ['to-string', ['get', 'ele']],
+          { 'text-font': ['literal', ['Noto Sans Regular']], 'font-scale': 0.85 },
+          ' m',
+          {},
+        ],
+        'text-font': ['Noto Sans Italic'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 12],
+        'text-line-height': 1.15,
+        'text-anchor': 'bottom',
+        'text-offset': [0, -0.4],
+        'text-allow-overlap': false,
+        'text-padding': 2,
+      },
+      paint: {
+        'text-color': '#3d3630',
+        'text-halo-color': '#f5f3ee',
+        'text-halo-width': 1.4,
+      },
+    } as unknown as AddLayerArg,
+    beforeId,
+  );
 }
 
 type FilterSpec = Parameters<MapLibreMap['setFilter']>[1];
