@@ -15,6 +15,7 @@ import { DEFAULT_VIEWPORT, loadViewport, saveViewport } from '../state/viewport'
 import { NorthControl } from './northControl';
 import { applyOutdoorContrast } from './outdoorContrast';
 import { registerPmtilesProtocol, probeOwnBasemap, rewriteStyleForOwnBasemap } from './ownBasemap';
+import { initTrailDifficulties } from './trailDifficulties';
 import { resolveTileBaseUrl } from '../osm/staticTiles';
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
@@ -99,19 +100,30 @@ export function createMap(container: HTMLElement): MapHandle {
   map.on('load', async () => {
     try {
       const tileBase = await resolveTileBaseUrl();
-      if (!tileBase) return;
-      const basemap = await probeOwnBasemap(tileBase);
-      if (!basemap) return;
-      const res = await fetch(MAP_STYLE_URL);
-      const hosted = await res.json();
-      map.setStyle(
-        rewriteStyleForOwnBasemap(hosted, basemap) as Parameters<typeof map.setStyle>[0],
-        {
-          diff: false,
-        },
-      );
+      if (tileBase) {
+        const basemap = await probeOwnBasemap(tileBase);
+        if (basemap) {
+          const res = await fetch(MAP_STYLE_URL);
+          const hosted = await res.json();
+          map.setStyle(
+            rewriteStyleForOwnBasemap(hosted, basemap) as Parameters<typeof map.setStyle>[0],
+            {
+              diff: false,
+            },
+          );
+        }
+      }
     } catch {
       // basemap swap is cosmetic — keep the hosted style on any failure
+    }
+    // trail difficulty overlay (README: trail difficulty overlay): after the
+    // basemap swap so a setStyle cannot wipe it; runs before App adds the
+    // route layers, so routes paint above the trail labels
+    try {
+      const tileBase = await resolveTileBaseUrl();
+      if (tileBase) await initTrailDifficulties(map, tileBase);
+    } catch {
+      // overlay is optional — absence is the normal hosted-only case
     }
   });
 

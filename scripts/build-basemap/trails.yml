@@ -1,0 +1,168 @@
+# Trail difficulty overlay (planetiler generate-custom, no Java code needed)
+#
+# A minimal PMTiles overlay that carries a ready-made S/T difficulty label for
+# every OSM trail tagged with mtb:scale / mtb:scale:uphill (preferred) or
+# sac_scale. The MTB Router app auto-probes for `trails.pmtiles` next to the
+# corridor tiles (tiles/trails.pmtiles) and draws these labels on the map —
+# see README "Trail difficulty overlay".
+#
+# Build (example: Austria):
+#   java -Xmx4g -jar planetiler.jar generate-custom --schema=trails.yml \
+#     --area=austria --download --output=trails.pmtiles --maxzoom=15
+#
+# Verify the label mappings without building (fast, uses the test cases below):
+#   java -jar planetiler.jar verify trails.yml
+#
+# Upload trails.pmtiles to your webspace as tiles/trails.pmtiles (next to
+# manifest.json / basemap.pmtiles). PMTiles needs HTTP range requests (the
+# same requirement as basemap.pmtiles).
+schema_name: MTB trail difficulties overlay
+schema_description: >-
+  S/T difficulty labels for tagged OSM trails (mtb:scale preferred over
+  sac_scale), consumed as a map overlay by the MTB Router.
+attribution: >-
+  <a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap contributors</a>
+is_overlay: true
+
+args:
+  area:
+    description: Geofabrik area to download (e.g. austria, liechtenstein)
+    default: liechtenstein
+  osm_local_path: '${ args.area + ".osm.pbf" }'
+
+sources:
+  osm:
+    type: osm
+    url: '${ "geofabrik:" + args.area }'
+    local_path: '${ args.osm_local_path }'
+
+layers:
+  - id: trail_difficulty
+    features:
+      # S label — mtb:scale wins whenever it is present (user request:
+      # prefer S over T). Suffix notation like 2+/2- stays readable (S2+).
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          mtb:scale: __any__
+        attributes:
+          - key: trail_label
+            value: '${ "S" + match_value }'
+          - key: highway
+            tag_value: highway
+      # S label from the uphill scale for ways tagged only there
+      # (mtb:scale:uphill is 0–5 → S0..S5)
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          mtb:scale: ""
+          mtb:scale:uphill: __any__
+        attributes:
+          - key: trail_label
+            value: '${ "S" + match_value }'
+          - key: highway
+            tag_value: highway
+      # T label — sac_scale-only ways (any mtb tag present means one of the
+      # S features above already covers this way, so exclude it here)
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          mtb:scale: ""
+          mtb:scale:uphill: ""
+          sac_scale: __any__
+        attributes:
+          - key: trail_label
+            value: >-
+              ${ match_value == "hiking" ? "T1"
+              : match_value == "mountain_hiking" ? "T2"
+              : match_value == "demanding_mountain_hiking" ? "T3"
+              : match_value == "alpine_hiking" ? "T4"
+              : match_value == "demanding_alpine_hiking" ? "T5"
+              : match_value == "difficult_alpine_hiking" ? "T6"
+              : match_value }
+          - key: highway
+            tag_value: highway
+
+# regression fixtures — run with: java -jar planetiler.jar verify trails.yml
+examples:
+  - name: mtb:scale 2 gets an S2 label
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        mtb:scale: "2"
+    output:
+      - layer: trail_difficulty
+        geometry: line
+        min_zoom: 12
+        tags:
+          trail_label: S2
+          highway: path
+  - name: mtb:scale suffix notation stays readable (S2+)
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        mtb:scale: 2+
+    output:
+      - layer: trail_difficulty
+        geometry: line
+        min_zoom: 12
+        tags:
+          trail_label: S2+
+          highway: path
+  - name: sac_scale-only way gets a T label
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        sac_scale: demanding_mountain_hiking
+    output:
+      - layer: trail_difficulty
+        geometry: line
+        min_zoom: 12
+        tags:
+          trail_label: T3
+          highway: path
+  - name: both scales — S wins, no T feature
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        mtb:scale: "1"
+        sac_scale: alpine_hiking
+    output:
+      - layer: trail_difficulty
+        geometry: line
+        min_zoom: 12
+        tags:
+          trail_label: S1
+          highway: path
+  - name: untagged trail gets no feature
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: track
+    output: []
+  - name: mtb:scale:uphill-only way gets an S label
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        mtb:scale:uphill: "3"
+    output:
+      - layer: trail_difficulty
+        geometry: line
+        min_zoom: 12
+        tags:
+          trail_label: S3
+          highway: path

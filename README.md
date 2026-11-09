@@ -178,6 +178,32 @@ Notes:
 - PMTiles needs HTTP **range requests** — supported by Apache/IIS by default; verify with
   `curl -sI -H "Range: bytes=0-100" https://yourdomain.at/tiles/basemap.pmtiles` (expect `206`).
 
+## Trail difficulty overlay (labels on every tagged trail)
+
+The route line always shows its difficulty labels ('S2', 'T3', …) — computed live from the
+routing data. If you also want **every displayed trail** on the basemap labeled, host a tiny
+second overlay archive: it carries a ready-made `trail_label` attribute for each OSM way tagged
+with `mtb:scale` (preferred, per the app's S-over-T rule) or `sac_scale`. The app probes for
+`tiles/trails.pmtiles` on the same host as the corridor tiles and draws the labels (faint tan
+line + white chip) automatically — with the hosted OpenFreeMap display *and* with your own
+basemap archive; absent file → no overlay.
+
+The schema needs **no Java code** — it is a Planetiler YAML profile
+([`scripts/build-basemap/trails.yml`](scripts/build-basemap/trails.yml)) with built-in test
+cases for the label mappings. Verify them, then build:
+
+```bash
+java -jar planetiler.jar verify scripts/build-basemap/trails.yml     # checks the S/T mappings
+java -Xmx4g -jar planetiler.jar generate-custom   --schema=scripts/build-basemap/trails.yml --area=austria --download   --output=trails.pmtiles --maxzoom=15
+```
+
+Upload `trails.pmtiles` as **`tiles/trails.pmtiles`** (next to `manifest.json` /
+`basemap.pmtiles`). Same hosting requirements as the basemap archive: PMTiles needs HTTP range
+requests — verify with
+`curl -sI -H "Range: bytes=0-100" https://yourdomain.at/tiles/trails.pmtiles` (expect `206`).
+For local development, copy it into `public/tiles/`; a tiny dev fixture can be generated with
+`node scripts/build-basemap/make-fixture-pmtiles.mjs public/tiles/trails.pmtiles`.
+
 ## Offline & PWA
 
 The app is an installable PWA: after opening it once, use your browser's **Install app** action
