@@ -57,11 +57,12 @@ export function createMap(container: HTMLElement): MapHandle {
   // footer; hiding them entirely would violate the ODbL/OSMF guideline that
   // attribution must stay visible.
   map.addControl(new AttributionControl({ compact: true }), 'bottom-left');
-  // maplibre v6 starts the compact control EXPANDED and only collapses it on
-  // the first map drag; keep that expanded state for a few seconds so the
-  // credits are actually seen, then collapse back to the chip (never fully
-  // hidden — see note above). The style credits populate after 'load', so
-  // wait for the element to exist before arming the timer.
+  // maplibre v6 starts the compact control EXPANDED; collapse it right away
+  // (user request) — the chip stays visible and opens on tap, which keeps the
+  // ODbL/OSMF requirement of visible, accessible attribution. The style
+  // credits populate after 'load', so wait for the element to exist first;
+  // removing compact-show is stable because maplibre only adds it once, when
+  // the compact state is created.
   map.once('load', () => {
     let tries = 0;
     const wait = setInterval(() => {
@@ -70,11 +71,11 @@ export function createMap(container: HTMLElement): MapHandle {
         .querySelector<HTMLElement>('.maplibregl-ctrl-attrib.maplibregl-compact');
       if (el) {
         clearInterval(wait);
-        setTimeout(() => el.classList.remove('maplibregl-compact-show'), 6000);
+        el.classList.remove('maplibregl-compact-show');
       } else if (++tries > 40) {
         clearInterval(wait);
       }
-    }, 250);
+    }, 100);
   });
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new NorthControl(), 'top-right');
