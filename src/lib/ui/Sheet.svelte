@@ -12,16 +12,23 @@
 
   const route = $derived(planning.route);
 
+  /** finite numbers only — NaN/Infinity (degraded engine output) show as '–' */
+  function finite(value: number, text: string): string {
+    return Number.isFinite(value) ? text : '–';
+  }
   function formatKm(meters: number): string {
-    return `${(meters / 1000).toLocaleString(i18n.locale, { maximumFractionDigits: 1 })} km`;
+    return finite(
+      meters,
+      `${(meters / 1000).toLocaleString(i18n.locale, { maximumFractionDigits: 1 })} km`,
+    );
   }
   function formatM(meters: number): string {
-    return `${Math.round(meters).toLocaleString(i18n.locale)} m`;
+    return finite(meters, `${Math.round(meters).toLocaleString(i18n.locale)} m`);
   }
   function formatTime(seconds: number): string {
     const h = Math.floor(seconds / 3600);
     const min = Math.round((seconds % 3600) / 60);
-    return h > 0 ? `${h}:${String(min).padStart(2, '0')} h` : `${min} min`;
+    return finite(seconds, h > 0 ? `${h}:${String(min).padStart(2, '0')} h` : `${min} min`);
   }
 
   type Tab = 'route' | 'difficulty' | 'routes';
