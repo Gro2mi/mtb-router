@@ -21,6 +21,7 @@ import { buildGraph, type Graph } from './graph/build';
 import { isElevationDegraded, loadElevations } from './elevation/terrarium';
 import { planRoute } from './router/route';
 import { RouteBlockedError } from './router/astar';
+import { regionCovers, regionFor, type LoadInfo } from './workerCoverage';
 import type { EngineStage, HostToWorker, RiderSettings, WorkerToHost } from './protocol';
 
 const RADIUS_STEPS = [2000, 5000, 10_000];
@@ -44,32 +45,18 @@ let abort: AbortController | null = null;
 const PROBE_RADIUS_M = 150;
 /**
  * Region the CURRENT graph was built from: bbox of the load's waypoints,
- * expanded by the load radius it was fetched with (matching the tile-range
- * math of fetchCorridorViaTiles). When a new plan's waypoints fall inside,
- * the graph + snap index are reused as-is — adding a waypoint costs a snap
- * + one A* run instead of re-parse + rebuild (the sluggishness fix).
+ * ALREADY expanded by the load radius (matching the tile-range math of
+ * fetchCorridorViaTiles). A new plan reuses the graph only when its ENTIRE
+ * corridor region fits inside (regionCovers) — waypoints alone are not
+ * enough: a waypoint near the region edge can snap onto a trail whose
+ * junctions lie outside the built graph (disconnected → spurious beeline).
  */
-let loadedBounds: { minLng: number; minLat: number; maxLng: number; maxLat: number } | null =
-  null;
-let loadedRadiusM = 0;
+let loadedRegion: LoadInfo | null = null;
 
 const post = (msg: WorkerToHost): void => self.postMessage(msg);
 
-/** expand the load bbox by its radius (same deg conversion as the tile fetch) */
 function coveredByLoadedRegion(points: CorridorPoint[], radiusM: number): boolean {
-  if (!loadedBounds || radiusM > loadedRadiusM) return false;
-  const meanLat =
-    loadedBounds.minLat / 2 + loadedBounds.maxLat / 2;
-  const dLat = radiusM / 111_320;
-  const dLng = radiusM / (111_320 * Math.max(0.1, Math.cos((meanLat * Math.PI) / 180)));
-  const b = loadedBounds;
-  return points.every(
-    (p) =>
-      p[0] >= b.minLng - dLng &&
-      p[0] <= b.maxLng + dLng &&
-      p[1] >= b.minLat - dLat &&
-      p[1] <= b.maxLat + dLat,
-  );
+  return loadedRegion !== null && regionCovers(loadedRegion, points, radiusM);
 }
 
 /** display positions per waypoint: snap position when snapped, raw otherwise */
@@ -179,15 +166,8 @@ async function attempt(
       return 'ok';
     }
     buildState(bundle);
-    const lngs = points.map((p) => p[0]);
-    const lats = points.map((p) => p[1]);
-    loadedBounds = {
-      minLng: Math.min(...lngs),
-      maxLng: Math.max(...lngs),
-      minLat: Math.min(...lats),
-      maxLat: Math.max(...lats),
-    };
-    loadedRadiusM = radiusM;
+    // store the region ALREADY EXPANDED by the load radius (see coverage note)
+    loadedRegion = { region: regionFor(points, radiusM), radiusM };
   }
   currentRadius = canReuse ? Math.max(currentRadius, radiusM) : radiusM;
 
@@ -259,17 +239,11 @@ async function plan(
   lastSettings = settings;
   setTileBaseUrlOverride(tileBaseUrl);
 
-  // The widening loop only pays off when a waypoint is off the network
-  // (user request): if every waypoint snaps against the current index, one
-  // attempt at the base radius with the beeline fallback is enough — adding
-  // a normally-snapped waypoint must not re-run 2 → 5 → 10 km. No index yet
-  // (first plan / new region) → take the full path.
-  const preSnaps = snapIndex ? snapAll(points, snapRadiusM) : null;
-  if (preSnaps && preSnaps.every((s) => s !== null)) {
-    await attempt(id, points, settings, RADIUS_STEPS[0]!, snapRadiusM, my, true);
-    return;
-  }
-
+  // NOTE: no all-snapped fast path here anymore — widening attempts on an
+  // already-covered graph are cheap since the coverage check in attempt()
+  // skips the reload, and a blocked route MUST widen: the corridor can be
+  // missing connecting trails beyond the loaded region (a snapped waypoint
+  // on a then-disconnected trail would otherwise degrade into a beeline).
   for (let i = 0; i < RADIUS_STEPS.length; i++) {
     const result = await attempt(id, points, settings, RADIUS_STEPS[i]!, snapRadiusM, my);
     if (my !== token) return;

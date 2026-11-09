@@ -161,6 +161,11 @@ class PlanningState {
       this.host.cancel();
       return;
     }
+    if (points.length === 1) {
+      // a single waypoint cannot produce a route — drop the previous one
+      // (user bug: deleting a waypoint left its beeline leg on the map)
+      this.route = null;
+    }
     // snap updates reassign the waypoints array (identity) without moving it —
     // replanning the identical polyline would abort the in-flight corridor
     // fetch, which is never cached, and re-download everything (request spam)
