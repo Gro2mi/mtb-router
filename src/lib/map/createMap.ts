@@ -16,6 +16,7 @@ import { NorthControl } from './northControl';
 import { applyOutdoorContrast } from './outdoorContrast';
 import { registerPmtilesProtocol, probeOwnBasemap, rewriteStyleForOwnBasemap } from './ownBasemap';
 import { initTrailDifficulties } from './trailDifficulties';
+import { TrailTileLabels } from './trailTileLabels';
 import { resolveTileBaseUrl } from '../osm/staticTiles';
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
@@ -29,6 +30,11 @@ export interface MapHandle {
 export function createMap(container: HTMLElement): MapHandle {
   // PMTiles support for the own-basemap mode (README: own basemap tiles)
   registerPmtilesProtocol();
+
+  // corridor-tile fallback trail labels (active when no trails.pmtiles
+  // overlay is hosted — see the load handler below); lives across the
+  // function scope so the destroy hook can stop its listeners
+  let trailTileLabels: TrailTileLabels | undefined;
 
   // maplibre-gl v6 loads its worker via `new URL(..., import.meta.url)`, which
   // breaks under Vite (dev pre-bundling and the production bundle). Point it at
@@ -119,12 +125,18 @@ export function createMap(container: HTMLElement): MapHandle {
     } catch {
       // basemap swap is cosmetic — keep the hosted style on any failure
     }
-    // trail difficulty overlay (README: trail difficulty overlay): after the
-    // basemap swap so a setStyle cannot wipe it; runs before App adds the
-    // route layers, so routes paint above the trail labels
+    // trail difficulty labels (user request: label all trails, S over T):
+    // prefer the trails.pmtiles overlay when hosted; otherwise fall back to
+    // labels derived from the self-hosted corridor tiles themselves
     try {
       const tileBase = await resolveTileBaseUrl();
-      if (tileBase) await initTrailDifficulties(map, tileBase);
+      if (tileBase) {
+        const overlayActive = await initTrailDifficulties(map, tileBase);
+        if (!overlayActive) {
+          trailTileLabels = new TrailTileLabels(map);
+          trailTileLabels.setTileBase(tileBase);
+        }
+      }
     } catch {
       // overlay is optional — absence is the normal hosted-only case
     }

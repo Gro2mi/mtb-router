@@ -44,10 +44,12 @@ export async function probeTrails(tileBase: string, signal?: AbortSignal): Promi
  * (registered in createMap's load handler before App adds the route layers):
  * a faint dark-tan casing marks which trails carry a label, and white chips
  * (same style as the route difficulty labels) show the grade.
+ * Returns true when the overlay is active (the caller then skips the
+ * corridor-tile fallback labels to avoid duplicates).
  */
-export async function initTrailDifficulties(map: MapLibreMap, tileBase: string): Promise<void> {
+export async function initTrailDifficulties(map: MapLibreMap, tileBase: string): Promise<boolean> {
   const url = await probeTrails(tileBase);
-  if (!url) return;
+  if (!url) return false;
   registerPmtilesProtocol();
   map.addSource(SOURCE, {
     type: 'vector',
@@ -87,6 +89,7 @@ export async function initTrailDifficulties(map: MapLibreMap, tileBase: string):
       'text-halo-width': 1.4,
     },
   } as LayerSpecification);
+  return true;
 }
 
 export function removeTrailDifficulties(map: MapLibreMap): void {
